@@ -48,6 +48,12 @@ notifications first. On Omarchy, see [docs/omarchy.md](docs/omarchy.md).
 The first time it runs, Hokum shows one welcome card of its own with a button into Settings. It
 remembers that in `~/.local/state/hokum/welcomed`.
 
+The running service checks for updates at startup and then hourly: it fetches its channel's
+release manifest (`https://anoma.ly/release/hokum/desktop/<channel>.json`, sent as
+`hokum/<channel>/<version>`) and notes a newer version in its log (`journalctl --user -u hokum`).
+It never updates itself; update through your package manager. To turn it off, set
+`check-for-updates #false` in `behaviour` in `config.kdl`.
+
 ## Use
 
 ```sh

@@ -28,6 +28,7 @@ mod settings;
 mod style;
 mod template;
 mod theme;
+mod update;
 mod watch;
 mod welcome;
 
@@ -152,6 +153,7 @@ fn run(open: bool, replace: bool) {
     if welcome {
         welcome::done();
     }
+    update::spawn();
     app.init(move || {
         let mut ui = settings::init();
         ui.configure(config);

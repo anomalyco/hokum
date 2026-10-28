@@ -160,6 +160,8 @@ pub struct Behaviour {
     pub pause_on_hover: bool,
     /// Only critical notifications (and apps allowed to interrupt) show.
     pub do_not_disturb: bool,
+    /// Fetch the release manifest at startup and hourly, and log when a newer version is out.
+    pub check_for_updates: bool,
 }
 
 impl Default for Behaviour {
@@ -171,6 +173,7 @@ impl Default for Behaviour {
             max_shown: 5,
             pause_on_hover: true,
             do_not_disturb: false,
+            check_for_updates: true,
         }
     }
 }

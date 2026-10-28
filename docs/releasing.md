@@ -105,7 +105,14 @@ them. Every target has a stable link to the channel's current file, for
 example `https://anoma.ly/release/hokum/desktop/dev/linux-x64-deb`.
 
 Hokum has no updater: installs update through their package manager, or by
-installing the newest file again.
+installing the newest file again. The running service (`src/update.rs`) does
+check in, at startup and then hourly (plus up to five minutes of jitter): it
+fetches its channel's manifest with User-Agent `hokum/<channel>/<version>`
+(for example `hokum/stable/0.1.1` or `hokum/dev/0.0.0-dev-19`), which counts
+active installs, and logs when the manifest's version is newer. The channel
+comes from the built version: `0.0.0-dev-*` is dev, `*-beta.*` beta,
+anything else stable. Failures are silent, and `check-for-updates #false` in
+config.kdl's `behaviour` turns it off.
 
 ## Channels
 

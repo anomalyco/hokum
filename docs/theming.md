@@ -13,6 +13,7 @@ behaviour {                  // only here, never in a theme
     pause-on-hover #true
     do-not-disturb #false
     appearance "system"      // system, light, dark
+    check-for-updates #true  // look for a newer Hokum hourly
 }
 
 tokens {                     // anything about the look
@@ -61,7 +62,7 @@ notification first and can rewrite, route or drop it.
 ## Behaviour
 
 Behaviour comes only from config.kdl; anything unset uses the default (top right, 6 seconds, 5
-cards, pause on hover, Do not disturb off, system appearance). The settings window shows
+cards, pause on hover, Do not disturb off, system appearance, check for updates). The settings window shows
 appearance under Appearance and the rest under Behaviour.
 
 | Key | Value |
@@ -72,6 +73,7 @@ appearance under Appearance and the rest under Behaviour.
 | `pause-on-hover` | `#true`: timers wait while the pointer is over a card |
 | `do-not-disturb` | `#true`: only critical notifications, and apps whose rule has `interrupt`, show |
 | `appearance` | `system`, `light`, `dark` |
+| `check-for-updates` | `#true`: fetch the release manifest at startup and hourly, and log when a newer version is out; `#false` turns it off |
 
 ## Tokens and templates
 

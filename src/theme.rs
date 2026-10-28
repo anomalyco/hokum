@@ -476,6 +476,7 @@ pub struct Behave {
     pub show_at_most: Option<usize>,
     pub pause_on_hover: Option<bool>,
     pub do_not_disturb: Option<bool>,
+    pub check_for_updates: Option<bool>,
 }
 
 impl Behave {
@@ -498,13 +499,16 @@ impl Behave {
         if let Some(v) = self.do_not_disturb {
             b.do_not_disturb = v;
         }
+        if let Some(v) = self.check_for_updates {
+            b.check_for_updates = v;
+        }
     }
 
     fn merge(&mut self, top: &Behave) {
         macro_rules! set {
             ($($f:ident),*) => { $(if top.$f.is_some() { self.$f = top.$f; })* };
         }
-        set!(position, appearance, stay, show_at_most, pause_on_hover, do_not_disturb);
+        set!(position, appearance, stay, show_at_most, pause_on_hover, do_not_disturb, check_for_updates);
     }
 }
 
@@ -871,9 +875,10 @@ impl Parser<'_> {
                 "show-at-most" => b.show_at_most = self.num(node, v).map(|n| n.clamp(1.0, 20.0) as usize),
                 "pause-on-hover" => b.pause_on_hover = flag(self, v),
                 "do-not-disturb" => b.do_not_disturb = flag(self, v),
+                "check-for-updates" => b.check_for_updates = flag(self, v),
                 other => self.problem(
                     node,
-                    format!("unknown behaviour `{other}`; use position, appearance, stay, show-at-most, pause-on-hover, do-not-disturb"),
+                    format!("unknown behaviour `{other}`; use position, appearance, stay, show-at-most, pause-on-hover, do-not-disturb, check-for-updates"),
                 ),
             }
         }
