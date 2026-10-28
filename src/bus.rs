@@ -273,6 +273,8 @@ impl Control {
         e.save().map_err(|err| failed(format!("couldn't save config.kdl: {err}")))?;
         let config = crate::watch::load();
         let now = config.loaded.behaviour.do_not_disturb;
+        // The overlay applies it a moment later; the property answers right away.
+        self.dnd.store(now, Ordering::Relaxed);
         let c = config.clone();
         self.ui.update(move |s, _| s.configure(c));
         self.settings.update(move |s, _| s.configure(config));
