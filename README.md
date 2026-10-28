@@ -41,6 +41,10 @@ instead, and stop another daemon (mako, dunst, swaync) holding the name:
 systemctl --user enable --now hokum.service
 ```
 
+Some desktop shells are the notification server themselves rather than a separate daemon
+(Omarchy's, and shells like it), and the unit can't stop them: turn off the shell's own
+notifications first. On Omarchy, see [docs/omarchy.md](docs/omarchy.md).
+
 The first time it runs, Hokum shows one welcome card of its own with a button into Settings. It
 remembers that in `~/.local/state/hokum/welcomed`.
 
@@ -50,8 +54,16 @@ remembers that in `~/.local/state/hokum/welcomed`.
 hokum                     # the settings window (starts Hokum if it isn't running)
 hokum service [--replace] # run in the background (what hokum.service starts)
 hokum check [path]        # report problems in config.kdl, or in a theme or config file
+hokum dismiss [--all]     # close the newest card, or every card
+hokum invoke              # do what clicking the newest card does
+hokum dnd [on|off|toggle] # print Do not disturb, or set it (--json, --watch for bars)
 hokum --version
 ```
+
+`dismiss`, `invoke` and `dnd` are for keybindings and bars, like `makoctl`. `hokum dnd on` saves
+to `config.kdl` just as the settings window's switch does. They call `app.hokum.Daemon` on the
+session bus (`Dismiss`, `Invoke`, `SetDoNotDisturb` and a `DoNotDisturb` property that announces
+its changes), which scripts can use directly.
 
 Like Hex, Hokum is one process: the service owns the bus name, draws the cards on a
 click-through overlay and hosts the settings window. Launching `hokum` again shows that window.
@@ -77,7 +89,8 @@ click-through overlay and hosts the settings window. Launching `hokum` again sho
   the app can raise its window on Wayland), progress bars (`value`), and
   in-place replacement by `x-dunst-stack-tag` / `x-canonical-private-synchronous` (volume,
   brightness). Critical notifications stay until dismissed. Slack's `[workspace] in #channel`
-  titles become the sender, the message, and the channel beside the app's name.
+  titles become the sender, the message, and the channel beside the app's name. Omarchy's
+  click commands, buttons and glyphs work too.
 
 Hokum keeps `config.kdl`, your `themes/` and `script.rhai` in `~/.config/hokum/`, and notices
 when any of them change.

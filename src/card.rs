@@ -33,6 +33,11 @@ pub struct Note {
     /// (key, label) without the default action or Chromium's "settings".
     pub actions: Vec<(String, String)>,
     pub has_default: bool,
+    /// Programs to run for action keys (`default` for a click), from Omarchy's
+    /// `omarchy-exec-argv` and `omarchy-actions` hints.
+    pub commands: Vec<(String, Vec<String>)>,
+    /// A glyph (Omarchy's `omarchy-glyph`) for the badge, in place of the app's letter.
+    pub glyph: Option<String>,
     /// The sender's `desktop-entry`, named when asking for an activation token.
     pub desktop: Option<String>,
     /// 0 low, 1 normal, 2 critical.
@@ -66,6 +71,8 @@ impl Note {
             body: body.into(),
             actions: Vec::new(),
             has_default: false,
+            commands: Vec::new(),
+            glyph: None,
             desktop: None,
             urgency: 1,
             value: None,
@@ -81,6 +88,11 @@ impl Note {
             deadline: None,
             left: None,
         }
+    }
+
+    /// The program to run for action `key`, if the notification carries one.
+    pub fn command(&self, key: &str) -> Option<&[String]> {
+        self.commands.iter().find(|(k, _)| k == key).map(|(_, argv)| argv.as_slice())
     }
 
     /// Decodes the icon and picture with `cache` (the decode itself runs on the cache's worker).

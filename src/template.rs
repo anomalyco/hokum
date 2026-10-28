@@ -148,14 +148,19 @@ fn decorate(cx: &Ctx, mut e: El, p: &Props, row: bool) -> El {
     e
 }
 
-/// The app's letter in its accent colour.
+/// The app's letter in its accent colour, or the glyph the notification asked for. Glyphs are
+/// usually Nerd Font icons, so they draw in the system's monospace font.
 fn letter(cx: &Ctx, size: f32, radius: f32) -> El {
-    let ch = cx.n.app.chars().find(|c| c.is_alphanumeric()).unwrap_or('•').to_uppercase().to_string();
     let badge = el().key("badge").size(size, size).radius(radius).center().fill(cx.accent);
     if cx.n.urgency >= 2 {
         return badge.child(icon(&rune_theme_opencode::icons::WARNING_BOLD, even(size * 0.6)).color(Color::WHITE));
     }
     let glyph = even(size * 0.55);
+    if let Some(g) = &cx.n.glyph {
+        let font = TextStyle::new(glyph, 400.0).lh(glyph).family(Family::SystemMono);
+        return badge.child(text(g.clone()).font(font).color(Color::WHITE));
+    }
+    let ch = cx.n.app.chars().find(|c| c.is_alphanumeric()).unwrap_or('•').to_uppercase().to_string();
     badge.child(text(ch).font(TextStyle::new(glyph, 650.0).lh(glyph)).color(Color::WHITE))
 }
 

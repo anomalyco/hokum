@@ -34,6 +34,8 @@ pub enum Out {
     Closed(u32, Reason),
     /// An action key, with an activation token from the click when the compositor gave one.
     Action(u32, String, Option<String>),
+    /// Do not disturb turned on or off.
+    Dnd(bool),
 }
 
 pub struct Ui {
@@ -117,6 +119,9 @@ impl Ui {
         }
         if !settings.pause_on_hover {
             self.hover(false);
+        }
+        if settings.do_not_disturb != self.settings.do_not_disturb {
+            let _ = self.out.send(Out::Dnd(settings.do_not_disturb));
         }
         self.settings = settings;
     }
@@ -206,6 +211,50 @@ impl Ui {
         self.reschedule();
     }
 
+    /// `hokum dismiss [--all]`: closes the newest card, or every card. Returns how many closed.
+    pub fn dismiss_newest(&mut self, all: bool) -> u32 {
+        let n = if all { self.notes.len() } else { self.notes.len().min(1) };
+        match (all, self.notes.first().map(|n| n.id)) {
+            (true, _) => self.clear(),
+            (false, Some(id)) => self.dismiss(id),
+            (false, None) => {}
+        }
+        n as u32
+    }
+
+    /// `hokum invoke`: does what clicking the newest card does. False without a card.
+    pub fn activate_newest(&mut self, token: Option<String>) -> bool {
+        let Some(id) = self.notes.first().map(|n| n.id) else { return false };
+        self.activate_with(id, token);
+        true
+    }
+
+    fn activate_with(&mut self, id: u32, token: Option<String>) {
+        let default = self.notes.iter().find(|n| n.id == id).is_some_and(|n| n.has_default || n.command("default").is_some());
+        if default { self.invoke_with(id, "default", token) } else { self.dismiss(id) }
+    }
+
+    fn invoke_with(&mut self, id: u32, key: &str, token: Option<String>) {
+        let note = self.notes.iter().find(|n| n.id == id);
+        let resident = note.is_some_and(|n| n.resident);
+        if id == crate::welcome::ID {
+            match (&self.window, token) {
+                (Some(w), Some(t)) => w.activate(t),
+                (Some(w), None) => w.open(),
+                (None, _) => {}
+            }
+            self.dismiss(id);
+            return;
+        }
+        if let Some(argv) = note.and_then(|n| n.command(key)) {
+            run(argv, token.as_deref());
+        }
+        let _ = self.out.send(Out::Action(id, key.to_owned(), token));
+        if !resident {
+            self.dismiss(id);
+        }
+    }
+
     fn expire(&mut self, now: Instant) {
         let gone: Vec<u32> = self.notes.iter().filter(|n| n.deadline.is_some_and(|d| d <= now)).map(|n| n.id).collect();
         for id in gone {
@@ -237,27 +286,15 @@ impl Cards for Ui {
     }
 
     fn invoke(&mut self, id: u32, key: &str) {
-        let note = self.notes.iter().find(|n| n.id == id);
-        let resident = note.is_some_and(|n| n.resident);
-        let token = rune::press_activation_token(note.and_then(|n| n.desktop.as_deref()));
-        if id == crate::welcome::ID {
-            match (&self.window, token) {
-                (Some(w), Some(t)) => w.activate(t),
-                (Some(w), None) => w.open(),
-                (None, _) => {}
-            }
-            self.dismiss(id);
-            return;
-        }
-        let _ = self.out.send(Out::Action(id, key.to_owned(), token));
-        if !resident {
-            self.dismiss(id);
-        }
+        let desktop = self.notes.iter().find(|n| n.id == id).and_then(|n| n.desktop.as_deref());
+        let token = rune::press_activation_token(desktop);
+        self.invoke_with(id, key, token);
     }
 
     fn activate(&mut self, id: u32) {
-        let default = self.notes.iter().find(|n| n.id == id).is_some_and(|n| n.has_default);
-        if default { self.invoke(id, "default") } else { self.dismiss(id) }
+        let desktop = self.notes.iter().find(|n| n.id == id).and_then(|n| n.desktop.as_deref());
+        let token = rune::press_activation_token(desktop);
+        self.activate_with(id, token);
     }
 
     /// Over the stack: pause every timer. Off it: resume where they were.
@@ -276,6 +313,24 @@ impl Cards for Ui {
             }
         }
         self.reschedule();
+    }
+}
+
+/// Runs a notification's own command (Omarchy's hints) directly, with no shell, detached from
+/// Hokum's terminal and process group, and reaps it when it exits.
+fn run(argv: &[String], token: Option<&str>) {
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+    let mut cmd = Command::new(&argv[0]);
+    cmd.args(&argv[1..]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).process_group(0);
+    if let Some(t) = token {
+        cmd.env("XDG_ACTIVATION_TOKEN", t);
+    }
+    match cmd.spawn() {
+        Ok(mut child) => {
+            std::thread::spawn(move || child.wait());
+        }
+        Err(e) => eprintln!("hokum: couldn't run {}: {e}", argv[0]),
     }
 }
 
@@ -528,6 +583,20 @@ mod tests {
         ui.activate(7);
         let out: Vec<Out> = rx.try_iter().collect();
         assert_eq!(out, vec![Out::Closed(7, Reason::Dismissed)]);
+    }
+
+    #[test]
+    fn an_omarchy_command_makes_a_click_invoke_and_hokum_invoke_takes_the_newest() {
+        let (mut ui, rx) = ui();
+        let mut n = note(7, false);
+        n.commands = vec![("default".into(), vec!["true".into()])];
+        ui.notes.push(n);
+        ui.notes.insert(0, note(8, false));
+        assert_eq!(ui.dismiss_newest(false), 1);
+        assert!(ui.activate_newest(None));
+        assert!(!ui.activate_newest(None));
+        let out: Vec<Out> = rx.try_iter().collect();
+        assert_eq!(out, vec![Out::Closed(8, Reason::Dismissed), Out::Action(7, "default".into(), None), Out::Closed(7, Reason::Dismissed)]);
     }
 
     fn volume(id: u32, value: f32) -> Note {

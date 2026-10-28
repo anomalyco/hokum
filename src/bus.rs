@@ -1,11 +1,13 @@
 //! `org.freedesktop.Notifications` on the session bus, plus Hokum's own objects on the same
 //! name: `app.hokum.Settings.Activate` (a second `hokum` shows this process's window) and
-//! `app.hokum.Daemon.Reload` (re-read config.kdl). Calls arrive on zbus's thread and
-//! reach the UI through Rune handles; closings and actions come back on a channel and go out
-//! as signals from a thread of their own.
+//! `app.hokum.Daemon` (`Reload` re-reads config.kdl; `Dismiss`, `Invoke`, `SetDoNotDisturb`
+//! and the `DoNotDisturb` property back `hokum dismiss|invoke|dnd`). Calls arrive on zbus's
+//! thread and reach the UI through Rune handles; closings, actions and Do not disturb changes
+//! come back on a channel and go out as signals from a thread of their own.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
@@ -23,6 +25,8 @@ const NAME: &str = "org.freedesktop.Notifications";
 const PATH: &str = "/org/freedesktop/Notifications";
 const SETTINGS_PATH: &str = "/app/hokum/Settings";
 const SETTINGS_IFACE: &str = "app.hokum.Settings";
+const DAEMON_PATH: &str = "/app/hokum/Daemon";
+const DAEMON_IFACE: &str = "app.hokum.Daemon";
 
 struct Server {
     ui: OverlayHandle<Ui>,
@@ -81,6 +85,42 @@ fn slack(summary: &str, body: &str) -> Option<(String, String, String)> {
     }
     let sender = rest.strip_prefix("from ")?;
     Some(("Direct message".to_owned(), sender.to_owned(), body.to_owned()))
+}
+
+/// Omarchy's `omarchy-exec-argv` hint: a string holding a JSON array of argv words
+/// (`omarchy-notification-send --exec`). Checked like Omarchy's shell does: 1–32 words, no
+/// NULs, and a program that isn't empty or an option.
+fn exec_argv(json: &str) -> Option<Vec<String>> {
+    let argv: Vec<String> = serde_json::from_str(json).ok().filter(|_| json.len() <= 16 * 1024)?;
+    let ok = (1..=32).contains(&argv.len())
+        && !argv[0].is_empty()
+        && !argv[0].starts_with('-')
+        && argv.iter().all(|a| !a.contains('\0'));
+    ok.then_some(argv)
+}
+
+/// Omarchy's `omarchy-actions` hint: a string holding `[{"label": …, "argv": [...]}, …]`, at
+/// most three, as buttons keyed `omarchy-0`, `omarchy-1`, ….
+fn omarchy_actions(json: &str) -> Vec<(String, String, Vec<String>)> {
+    #[derive(serde::Deserialize)]
+    struct Action {
+        label: String,
+        argv: serde_json::Value,
+    }
+    let Ok(actions) = serde_json::from_str::<Vec<Action>>(json) else { return Vec::new() };
+    actions
+        .into_iter()
+        .take(3)
+        .enumerate()
+        .filter(|(_, a)| !a.label.trim().is_empty())
+        .filter_map(|(i, a)| Some((format!("omarchy-{i}"), a.label, exec_argv(&a.argv.to_string())?)))
+        .collect()
+}
+
+/// Omarchy's `omarchy-glyph` hint: a few code points (a Nerd Font icon) for the icon slot.
+fn glyph(text: &str) -> Option<String> {
+    let ok = !text.is_empty() && text.chars().count() <= 16 && !text.chars().any(char::is_control);
+    ok.then(|| text.to_owned())
 }
 
 /// Splits Notify's flat `[key, label, …]` list into whether there is a default action and the
@@ -154,6 +194,15 @@ impl Server {
             // The app's own icon isn't a picture of the notification.
             .filter(|img| Some(img) != n.icon_src.as_ref());
         (n.has_default, n.actions) = split_actions(&actions);
+        if let Some(argv) = hint::<String>(&hints, "omarchy-exec-argv").as_deref().and_then(exec_argv) {
+            n.commands.push(("default".into(), argv));
+        }
+        for (key, label, argv) in hint::<String>(&hints, "omarchy-actions").as_deref().map(omarchy_actions).unwrap_or_default() {
+            n.actions.push((key.clone(), label));
+            n.commands.push((key, argv));
+        }
+        // Omarchy draws its glyph only when no picture resolves; so does the letter it replaces.
+        n.glyph = hint::<String>(&hints, "omarchy-glyph").as_deref().and_then(glyph);
         n.timeout = match expire_timeout {
             0 => Timeout::Never,
             t if t > 0 => Timeout::After(Duration::from_millis(t as u64)),
@@ -172,16 +221,68 @@ impl Server {
     }
 }
 
-struct Reloader {
+struct Control {
     ui: OverlayHandle<Ui>,
+    settings: AppHandle<crate::settings::Ui>,
+    dnd: Arc<AtomicBool>,
+}
+
+impl Control {
+    /// Runs `f` on the overlay's state and waits for its answer.
+    fn ask<T: Send + 'static>(&self, f: impl FnOnce(&mut Ui) -> T + Send + 'static) -> zbus::fdo::Result<T> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.ui.update(move |s, _| {
+            let _ = tx.send(f(s));
+        });
+        rx.recv_timeout(Duration::from_secs(3)).map_err(|_| zbus::fdo::Error::Failed("Hokum's overlay didn't answer".into()))
+    }
 }
 
 #[zbus::interface(name = "app.hokum.Daemon")]
-impl Reloader {
+impl Control {
     /// Re-read config.kdl, its theme and the script, and restyle live.
     fn reload(&self) {
         let config = crate::watch::load();
         self.ui.update(move |s, _| s.configure(config));
+    }
+
+    /// Close the newest card, or every card with `all`. Returns how many closed.
+    fn dismiss(&self, all: bool) -> zbus::fdo::Result<u32> {
+        self.ask(move |s| s.dismiss_newest(all))
+    }
+
+    /// Do what clicking the newest card does: its default action (and Omarchy's
+    /// `omarchy-exec-argv` command), or dismiss it without one. False when there's no card.
+    fn invoke(&self, token: String) -> zbus::fdo::Result<bool> {
+        self.ask(move |s| s.activate_newest(Some(token).filter(|t| !t.is_empty())))
+    }
+
+    /// Turn Do not disturb on or off. Saved to config.kdl exactly as the settings window's
+    /// switch saves it; returns the state afterwards.
+    fn set_do_not_disturb(&self, on: bool) -> zbus::fdo::Result<bool> {
+        let failed = zbus::fdo::Error::Failed;
+        if !crate::config::load().ok() {
+            return Err(failed("config.kdl has problems (see `hokum check`); fix them first".into()));
+        }
+        let mut e = crate::config::Edit::open().map_err(failed)?;
+        if on == crate::style::Behaviour::default().do_not_disturb {
+            e.remove_behaviour("do-not-disturb");
+        } else {
+            e.set_behaviour("do-not-disturb", crate::config::Value::Flag(on));
+        }
+        e.save().map_err(|err| failed(format!("couldn't save config.kdl: {err}")))?;
+        let config = crate::watch::load();
+        let now = config.loaded.behaviour.do_not_disturb;
+        let c = config.clone();
+        self.ui.update(move |s, _| s.configure(c));
+        self.settings.update(move |s, _| s.configure(config));
+        Ok(now)
+    }
+
+    /// Whether Do not disturb is on. Changes are announced with `PropertiesChanged`.
+    #[zbus(property)]
+    fn do_not_disturb(&self) -> bool {
+        self.dnd.load(Ordering::Relaxed)
     }
 }
 
@@ -260,10 +361,13 @@ pub fn serve(
     settings: AppHandle<crate::settings::Ui>,
     out: Receiver<Out>,
     replace: bool,
+    dnd: bool,
 ) -> zbus::Result<(Connection, Daemon)> {
+    let dnd = Arc::new(AtomicBool::new(dnd));
+    let control = Control { ui: overlay.clone(), settings: settings.clone(), dnd: dnd.clone() };
     let conn = zbus::blocking::connection::Builder::session()?
         .serve_at(PATH, Server { ui: overlay.clone(), next: AtomicU32::new(1) })?
-        .serve_at("/app/hokum/Daemon", Reloader { ui: overlay.clone() })?
+        .serve_at(DAEMON_PATH, control)?
         .serve_at(SETTINGS_PATH, Window { settings: settings.clone() })?
         .build()?;
     let daemon = claim(&conn, replace);
@@ -288,6 +392,12 @@ pub fn serve(
                     }
                     emit.emit_signal(None::<&str>, PATH, NAME, "ActionInvoked", &(id, key))
                 }
+                Out::Dnd(on) => {
+                    dnd.store(on, Ordering::Relaxed);
+                    let changed = HashMap::from([("DoNotDisturb", zbus::zvariant::Value::from(on))]);
+                    let body = (DAEMON_IFACE, changed, Vec::<&str>::new());
+                    emit.emit_signal(None::<&str>, DAEMON_PATH, "org.freedesktop.DBus.Properties", "PropertiesChanged", &body)
+                }
             };
         }
     });
@@ -301,9 +411,108 @@ pub fn forward(token: &str) -> bool {
     conn.call_method(Some(NAME), SETTINGS_PATH, Some(SETTINGS_IFACE), "Activate", &(token,)).is_ok()
 }
 
+/// `hokum dismiss`, `hokum invoke` and `hokum dnd`: drive the running Hokum like makoctl
+/// drives mako. Prints what a script or bar needs and returns the exit code.
+pub fn control(args: &[String]) -> i32 {
+    let fail = |e: &dyn std::fmt::Display| {
+        eprintln!("hokum: {e}");
+        1
+    };
+    let conn = match Connection::session() {
+        Ok(c) => c,
+        Err(e) => return fail(&format!("no session bus: {e}")),
+    };
+    let call = |method: &str, body: &dyn Body| body.call(&conn, method);
+    let flag = |f: &str| args.iter().any(|a| a == f);
+    match args.first().map(String::as_str) {
+        Some("dismiss") => match call("Dismiss", &(flag("--all") || flag("-a"),)).and_then(|m| m.body().deserialize::<u32>()) {
+            Ok(0) => fail(&"no notifications"),
+            Ok(_) => 0,
+            Err(e) => fail(&e),
+        },
+        Some("invoke") => {
+            let token = std::env::var("XDG_ACTIVATION_TOKEN").unwrap_or_default();
+            match call("Invoke", &(token,)).and_then(|m| m.body().deserialize::<bool>()) {
+                Ok(true) => 0,
+                Ok(false) => fail(&"no notifications"),
+                Err(e) => fail(&e),
+            }
+        }
+        _ => {
+            let json = flag("--json");
+            let print = |on: bool| {
+                if json { println!("{{\"dnd\":{on}}}") } else { println!("{}", if on { "on" } else { "off" }) }
+            };
+            let get = || -> zbus::Result<bool> {
+                let reply = conn.call_method(Some(NAME), DAEMON_PATH, Some("org.freedesktop.DBus.Properties"), "Get", &(DAEMON_IFACE, "DoNotDisturb"))?;
+                let v: OwnedValue = reply.body().deserialize()?;
+                Ok(bool::try_from(v)?)
+            };
+            let want = match args.iter().skip(1).find(|a| !a.starts_with('-')).map(String::as_str) {
+                None => None,
+                Some("on") => Some(Some(true)),
+                Some("off") => Some(Some(false)),
+                Some("toggle") => Some(None),
+                Some(other) => return fail(&format!("unknown `dnd {other}`; use on, off or toggle")),
+            };
+            let result = match want {
+                None => get(),
+                Some(want) => match want.map_or_else(|| get().map(|v| !v), Ok) {
+                    Ok(on) => call("SetDoNotDisturb", &(on,)).and_then(|m| m.body().deserialize::<bool>()),
+                    Err(e) => Err(e),
+                },
+            };
+            match result {
+                Ok(on) => print(on),
+                Err(e) => return fail(&e),
+            }
+            if !flag("--watch") {
+                return 0;
+            }
+            let Ok(proxy) = zbus::blocking::fdo::PropertiesProxy::builder(&conn).destination(NAME).and_then(|b| b.path(DAEMON_PATH)).and_then(|b| b.build()) else {
+                return fail(&"couldn't watch Hokum");
+            };
+            let Ok(changes) = proxy.receive_properties_changed() else { return fail(&"couldn't watch Hokum") };
+            for change in changes {
+                if let Ok(args) = change.args()
+                    && args.interface_name == DAEMON_IFACE
+                    && let Some(v) = args.changed_properties.get("DoNotDisturb")
+                    && let Ok(on) = bool::try_from(v)
+                {
+                    print(on);
+                }
+            }
+            0
+        }
+    }
+}
+
+/// A method body of any type, so one closure can call every `app.hokum.Daemon` method.
+trait Body {
+    fn call(&self, conn: &Connection, method: &str) -> zbus::Result<zbus::message::Message>;
+}
+
+impl<T: serde::Serialize + zbus::zvariant::DynamicType> Body for T {
+    fn call(&self, conn: &Connection, method: &str) -> zbus::Result<zbus::message::Message> {
+        conn.call_method(Some(NAME), DAEMON_PATH, Some(DAEMON_IFACE), method, self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::split_actions;
+    use super::{exec_argv, glyph, omarchy_actions, split_actions};
+
+    #[test]
+    fn omarchy_hints() {
+        assert_eq!(exec_argv(r#"["omarchy-launch-floating-terminal-with-presentation","omarchy-update"]"#).unwrap().len(), 2);
+        assert_eq!(exec_argv(r#"["-rf"]"#), None);
+        assert_eq!(exec_argv("[]"), None);
+        assert_eq!(exec_argv("xdg-open https://x"), None);
+        let actions = omarchy_actions(r#"[{"label":"Open","argv":["xdg-open","/tmp"]},{"label":"Bad","argv":"rm"}]"#);
+        assert_eq!(actions, vec![("omarchy-0".into(), "Open".into(), vec!["xdg-open".into(), "/tmp".into()])]);
+        assert_eq!(glyph("\u{f0e7}").as_deref(), Some("\u{f0e7}"));
+        assert_eq!(glyph("a\nb"), None);
+    }
 
     fn strings(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()

@@ -4,6 +4,9 @@
 //! hokum                     # show the settings window (starting Hokum if it isn't running)
 //! hokum service [--replace] # run Hokum in the background (what hokum.service starts)
 //! hokum check [path]        # report problems in config.kdl (or a theme or config file)
+//! hokum dismiss [--all]     # close the newest card (or all of them)
+//! hokum invoke              # click the newest card
+//! hokum dnd [on|off|toggle] # Do not disturb: print it, or set it and print the result
 //! hokum --version
 //! hokum --snap /tmp/settings.png --scene hokum            # headless settings, no D-Bus
 //! hokum service --snap /tmp/cards.png --scene demo        # headless cards, no D-Bus
@@ -31,12 +34,20 @@ mod welcome;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-const HELP: &str = "usage: hokum [service [--replace] | check [path]] [--version] [--help]
+const HELP: &str = "usage: hokum [service [--replace] | check [path] | dismiss | invoke | dnd] [--version] [--help]
   hokum                  show the settings window (starts Hokum if needed)
   hokum service          run Hokum in the background (what hokum.service starts)
     --replace            take org.freedesktop.Notifications from another daemon
   hokum check [path]     load config.kdl (or a theme or config file) as Hokum would and
                          print its problems; exits non-zero if there are any
+  hokum dismiss [--all]  close the newest card, or every card
+  hokum invoke           do what clicking the newest card does
+  hokum dnd [on|off|toggle]
+                         print Do not disturb (on or off), or set it and print the result;
+                         saved to config.kdl like the settings window's switch
+    --json               print {\"dnd\":true} instead
+    --watch              keep printing it whenever it changes (for bars)
+  dismiss and invoke exit 1 when there are no notifications
   --version              print the version
 Rune's tooling flags (--snap, --scene, --size, --theme, ...) render headless.";
 
@@ -52,6 +63,9 @@ fn main() {
     }
     if argv.first().is_some_and(|a| a == "check") {
         std::process::exit(if config::check(argv.get(1).map(String::as_str)) { 0 } else { 1 });
+    }
+    if argv.first().is_some_and(|a| matches!(a.as_str(), "dismiss" | "invoke" | "dnd")) {
+        std::process::exit(bus::control(&argv));
     }
     let headless = argv.iter().any(|a| {
         matches!(a.as_str(), "--snap" | "--tree" | "--trace" | "--frames" | "--strip" | "--list-scenes" | "--first-pixels")
@@ -121,7 +135,8 @@ fn run(open: bool, replace: bool) {
         let n = welcome::note();
         overlay.update(move |c, _| c.upsert(n));
     }
-    let (bus, daemon) = match bus::serve(overlay.clone(), window.clone(), out_rx, replace) {
+    let dnd = config.loaded.behaviour.do_not_disturb;
+    let (bus, daemon) = match bus::serve(overlay.clone(), window.clone(), out_rx, replace, dnd) {
         Ok(served) => served,
         Err(e) => {
             eprintln!("hokum: no session bus: {e}");
