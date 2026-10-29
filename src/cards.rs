@@ -65,6 +65,8 @@ pub struct Ui {
     heights: HashMap<u32, f32>,
     /// The overlay's height: `HEIGHT`, or taller to hold a card that is.
     overlay_h: f32,
+    /// Plays notification sounds; None when headless.
+    pub chime: Option<Sender<crate::chime::Pick>>,
 }
 
 impl Ui {
@@ -83,6 +85,7 @@ impl Ui {
             window: None,
             shown: false,
             hide_at: None,
+            chime: None,
             heights: HashMap::new(),
             overlay_h: HEIGHT,
         };
@@ -191,7 +194,19 @@ impl Ui {
             (false, Some(t)) => n.deadline = Some(Instant::now() + t),
         }
         let same = |o: &Note| o.id == n.id || (n.tag.is_some() && o.tag == n.tag && o.app == n.app);
-        if let Some(i) = self.notes.iter().position(same) {
+        let replaces = self.notes.iter().position(same);
+        // Only new cards chime: not updates in place (progress, a tagged volume card), and never
+        // Hokum's own cards.
+        let own = n.hud || n.id == crate::welcome::ID || n.id == crate::update::ID;
+        if replaces.is_none()
+            && !own
+            && let Some(chime) = &self.chime
+            && let Some(pick) =
+                crate::chime::choose(&self.settings, routing.sound.as_ref(), &n.sound, n.urgency)
+        {
+            let _ = chime.send(pick);
+        }
+        if let Some(i) = replaces {
             let old = self.notes[i].id;
             n.slot = self.notes[i].slot;
             if old != n.id {
@@ -1070,5 +1085,44 @@ mod tests {
         ui.close(1, Reason::Expired);
         ui.upsert(volume(2, 0.5));
         assert_eq!((ui.notes[0].id, ui.notes[0].slot), (2, 2));
+    }
+
+    #[test]
+    fn only_new_cards_chime() {
+        let (mut ui, _rx) = ui();
+        let (tx, chimes) = channel();
+        ui.chime = Some(tx);
+        let heard = || chimes.try_iter().count();
+        ui.upsert(Note::new(1, "App", "s", "b"));
+        assert_eq!(heard(), 0, "off by default");
+        ui.settings.sound = true;
+        ui.upsert(Note::new(2, "App", "s", "b"));
+        assert_eq!(heard(), 1);
+        ui.upsert(Note::new(2, "App", "s", "changed"));
+        assert_eq!(heard(), 0, "an update in place");
+        let mut quiet = Note::new(3, "App", "s", "b");
+        quiet.sound = crate::chime::Hint::Suppress;
+        ui.upsert(quiet);
+        assert_eq!(heard(), 0, "suppress-sound");
+        let mut osd = Note::new(4, "Volume", "s", "b");
+        osd.hud = true;
+        ui.upsert(osd);
+        assert_eq!(heard(), 0, "Hokum's own card");
+        ui.settings.do_not_disturb = true;
+        ui.upsert(Note::new(5, "App", "s", "b"));
+        assert_eq!(heard(), 0, "held back by Do not disturb");
+        let mut critical = Note::new(6, "App", "s", "b");
+        critical.urgency = 2;
+        ui.upsert(critical);
+        assert_eq!(heard(), 1, "critical breaks through");
+        ui.settings.do_not_disturb = false;
+        ui.theme = crate::theme::parse(
+            "rule app=\"Mute\" { hide }\nrule app=\"Hush\" { sound #false }\n",
+            "x",
+        )
+        .unwrap();
+        ui.upsert(Note::new(7, "Mute", "s", "b"));
+        ui.upsert(Note::new(8, "Hush", "s", "b"));
+        assert_eq!(heard(), 0, "hidden and silenced apps");
     }
 }

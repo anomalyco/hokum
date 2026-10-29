@@ -369,6 +369,11 @@ fn build(r: Request) -> Note {
         .or_else(|| hint::<String>(&hints, "x-canonical-private-synchronous"))
         .filter(|t| !t.is_empty());
     n.resident = hint::<bool>(&hints, "resident").unwrap_or(false);
+    n.sound = crate::chime::Hint::new(
+        hint::<bool>(&hints, "suppress-sound").unwrap_or(false),
+        hint::<String>(&hints, "sound-file").as_deref(),
+        hint::<String>(&hints, "sound-name").as_deref(),
+    );
     n.icon_src = who.icon.map(Source::File);
     let guessed = who.guessed;
     n.entry = who.entry;

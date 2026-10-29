@@ -64,6 +64,8 @@ pub struct Note {
     pub left: Option<Duration>,
     /// Hokum's own feedback (the volume card): shown through Do not disturb.
     pub hud: bool,
+    /// The sender's sound hints.
+    pub sound: crate::chime::Hint,
 }
 
 impl Note {
@@ -100,6 +102,7 @@ impl Note {
             deadline: None,
             left: None,
             hud: false,
+            sound: crate::chime::Hint::None,
         }
     }
 

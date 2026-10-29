@@ -105,11 +105,15 @@ pub fn check(file: Option<&str>) -> bool {
     let (shown, problems, what) = match file {
         None => {
             let l = load();
-            let mut problems: Vec<(String, Problem)> = l
-                .problems
-                .into_iter()
-                .map(|p| (path().display().to_string(), p))
-                .collect();
+            let sounds = crate::chime::problems(&l.behaviour, &l.theme.rules);
+            let mut problems: Vec<(String, Problem)> =
+                l.problems
+                    .into_iter()
+                    .map(|p| (path().display().to_string(), p))
+                    .chain(sounds.into_iter().map(|message| {
+                        (path().display().to_string(), Problem { line: 0, message })
+                    }))
+                    .collect();
             let script = crate::script::path();
             if let Ok(src) = std::fs::read_to_string(&script)
                 && let Err(e) = crate::script::Script::compile(&src)
@@ -810,6 +814,46 @@ mod tests {
         assert!(
             crate::theme::parse("modules { sound #false }\n", "t").is_err(),
             "themes don't set modules"
+        );
+    }
+
+    #[test]
+    fn sounds_are_off_unless_turned_on() {
+        use crate::chime::Choice;
+        let b = load_src("theme \"soft\"\n").behaviour;
+        assert!(
+            !b.sound
+                && b.sound_name == "message-new-instant"
+                && b.sound_critical == "dialog-warning"
+        );
+        assert!(load_src("behaviour { sound #true; }\n").behaviour.sound);
+        let l = load_src("behaviour { sound \"bell\"; sound-critical \"~/alarm.oga\"; }\n");
+        assert!(l.ok() && l.behaviour.sound && l.behaviour.sound_name == "bell");
+        assert_eq!(l.behaviour.sound_critical, "~/alarm.oga");
+        for bad in [
+            "sound 3",
+            "sound \"a/b\"",
+            "sound \"rel/x.oga\"",
+            "sound-critical #true",
+        ] {
+            assert!(
+                !load_src(&format!("behaviour {{ {bad}; }}\n")).ok(),
+                "{bad}"
+            );
+        }
+        let l = load_src(
+            "rule app=\"Slack\" { sound \"/s/ping.wav\"; }\nrule app=\"Spotify\" { sound #false; }\n",
+        );
+        assert!(l.ok());
+        assert_eq!(
+            l.theme
+                .rules
+                .iter()
+                .rev()
+                .take(2)
+                .map(|r| r.sound.clone())
+                .collect::<Vec<_>>(),
+            [Some(Choice::Off), Some(Choice::Sound("/s/ping.wav".into()))]
         );
     }
 

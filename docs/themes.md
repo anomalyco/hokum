@@ -280,6 +280,7 @@ Every matching rule applies, in order.
 | `timeout 10` / `timeout "never"` | How long they stay; `0` is also never |
 | `hide` | Don't show them |
 | `interrupt` | Show them even during Do not disturb |
+| `sound #false` / `sound "bell"` | Silence them, or give them their own sound (a user's config, not a theme) |
 
 ```kdl
 rule urgency="critical" {
@@ -304,7 +305,7 @@ Behaviour isn't part of a theme. `behaviour { … }` lives only in `config.kdl`:
 (`"top-right"`, `"top-left"`, `"top-center"`, `"bottom-right"`, `"bottom-left"`,
 `"bottom-center"`), `stay` (seconds),
 `show-at-most` (1 to 20), `pause-on-hover`, `do-not-disturb` and `check-for-updates`
-(`#true`/`#false`),
+(`#true`/`#false`), `sound` and `sound-critical` (notification sounds, off by default),
 `appearance` (`"system"`, `"light"`, `"dark"`) and `clock` (`"auto"`, `"12h"`, `"24h"`). The settings window writes it, and anything
 unset uses Hokum's defaults (top right, 6 seconds, 5 cards, pause on hover, system appearance).
 A theme should look right in both light and dark, since the user picks.

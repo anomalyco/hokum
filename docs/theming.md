@@ -15,6 +15,7 @@ behaviour {                  // only here, never in a theme
     appearance "system"      // system, light, dark
     clock "auto"             // auto, 12h, 24h
     check-for-updates #true  // offer newer Hokum builds with a card
+    sound #false             // #true, or a sound's name or file, to chime for new cards
 }
 
 tokens {                     // anything about the look
@@ -94,7 +95,32 @@ appearance under Appearance and the rest under Behaviour.
 | `do-not-disturb` | `#true`: only critical notifications, and apps whose rule has `interrupt`, show |
 | `appearance` | `system`, `light`, `dark` |
 | `clock` | `{time}` on cards: `12h` (`7:54 PM`), `24h` (`19:54`), or `auto` (the default), which follows Omarchy's bar clock, GNOME's clock setting, or else your locale (`en_US` and other AM/PM locales get 12-hour). A theme can force one with `{time|12h}` or `{time|24h}` |
+| `sound` | `#true`: play a sound when a new card shows (off by default). A name from the sound theme (`"message-new-instant"`, the default) or an absolute path to an `.oga`, `.ogg` or `.wav` file picks the sound and turns it on |
+| `sound-critical` | the sound for critical notifications (default `"dialog-warning"`) |
 | `check-for-updates` | `#true`: fetch the release manifest hourly (30 minutes on dev) and show a card when a different build is out; nothing installs without a click. `#false` turns it off |
+
+### Sounds
+
+With `sound` on, every new card plays a sound: not updates to a card already showing (progress,
+the same tagged notification again), not cards Do not disturb holds back or a rule hides, and
+never Hokum's own volume and brightness cards. Names come from the desktop's sound theme
+(`gtk-sound-theme-name`, else `freedesktop`; the `sound-theme-freedesktop` package has the
+defaults), and Hokum plays them with `pw-play`, else `paplay` (or `aplay` for WAV). An app's own
+`sound-file` or `sound-name` hint replaces the configured sound and `suppress-sound` silences
+it; a rule's `sound` wins over the app. A burst of notifications makes one sound.
+`hokum check` reports a sound it can't find.
+
+```kdl
+behaviour {
+    sound "message-new-instant"
+    sound-critical "~/sounds/alarm.oga"
+}
+rule app="Slack" { sound "bell" }
+rule app="Spotify" { sound #false }
+```
+
+There is no hook to run a command for every notification: the text comes from any app or web
+page, and it would end up in the command.
 
 ## Tokens and templates
 
@@ -127,7 +153,8 @@ A rule matches notifications and changes them. Matchers are `app`, `summary`, `b
 insensitive, `*` matches anything) and `urgency`; a rule with several matchers needs them all.
 Every matching rule applies in order, a theme's before the config's, so later rules win.
 Actions: `template "…"` (from the theme, anything it starts from, or this file), `tokens { … }`, `timeout` (seconds or `"never"`), `hide`, and
-`interrupt` (show even during Do not disturb).
+`interrupt` (show even during Do not disturb), and `sound` (`#false` silences the app, `#true`
+gives it the usual sound even when sounds are off, a name or path picks its own).
 
 The settings window manages rules that match one app by its exact name (`rule app="Slack"`),
 setting `hide`, `timeout` and `interrupt`; anything else in such a rule (`tokens`, `template`)

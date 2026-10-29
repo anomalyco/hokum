@@ -31,6 +31,7 @@ mod bluetooth;
 mod bus;
 mod card;
 mod cards;
+mod chime;
 mod clock;
 mod config;
 mod desktop;
@@ -212,6 +213,7 @@ fn run(open: bool, replace: bool, section: Option<settings::Section>) {
         overlay.update(move |c, _| {
             c.handle = Some(own);
             c.window = Some(window);
+            c.chime = crate::chime::start();
         });
     }
     if welcome {

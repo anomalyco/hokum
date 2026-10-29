@@ -161,6 +161,9 @@ answering them.
   picture is just the app's icon again. Emoji draw in colour.
 - **Behaviour:** screen corner, how long cards stay, how many show, pause while hovered, and
   Do not disturb (only critical notifications and apps you allow show).
+- **Sounds (opt-in):** `behaviour { sound #true }` plays a sound for new cards, with its own
+  for critical ones and per-app `rule`s; apps' `sound-file`, `sound-name` and `suppress-sound`
+  hints count. See [docs/theming.md](docs/theming.md#sounds).
 - **Cards:** action buttons, a click for the default action (with an XDG activation token, so
   the app can raise its window on Wayland), a right-click to dismiss, progress bars (`value`), and
   in-place replacement by `x-dunst-stack-tag` / `x-canonical-private-synchronous` (volume,

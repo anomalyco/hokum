@@ -568,6 +568,7 @@ pub struct Rule {
     pub hide: bool,
     /// Shows even during Do not disturb.
     pub interrupt: bool,
+    pub sound: Option<crate::chime::Choice>,
 }
 
 impl Rule {
@@ -619,6 +620,9 @@ pub struct Behave {
     pub do_not_disturb: Option<bool>,
     pub check_for_updates: Option<bool>,
     pub clock: Option<Clock>,
+    pub sound: Option<bool>,
+    pub sound_name: Option<String>,
+    pub sound_critical: Option<String>,
 }
 
 impl Behave {
@@ -647,6 +651,15 @@ impl Behave {
         if let Some(v) = self.clock {
             b.clock = v;
         }
+        if let Some(v) = self.sound {
+            b.sound = v;
+        }
+        if let Some(v) = &self.sound_name {
+            b.sound_name = v.clone();
+        }
+        if let Some(v) = &self.sound_critical {
+            b.sound_critical = v.clone();
+        }
     }
 
     fn merge(&mut self, top: &Behave) {
@@ -663,6 +676,12 @@ impl Behave {
             check_for_updates,
             clock
         );
+        if top.sound_name.is_some() {
+            self.sound_name = top.sound_name.clone();
+        }
+        if top.sound_critical.is_some() {
+            self.sound_critical = top.sound_critical.clone();
+        }
     }
 }
 
@@ -853,16 +872,20 @@ impl Theme {
             if rule.timeout.is_some() {
                 r.timeout = rule.timeout;
             }
+            if rule.sound.is_some() {
+                r.sound.clone_from(&rule.sound);
+            }
         }
         r
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Routing {
     pub hide: bool,
     pub timeout: Option<Timeout>,
     pub interrupt: bool,
+    pub sound: Option<crate::chime::Choice>,
 }
 
 /// Font names live as long as the process; themes reload, so names are shared.
@@ -1180,9 +1203,23 @@ impl Parser<'_> {
                 "do-not-disturb" => b.do_not_disturb = flag(self, v),
                 "check-for-updates" => b.check_for_updates = flag(self, v),
                 "clock" => b.clock = self.keyword(node, v, "clock", &Clock::ALL.map(|c| (c.word(), c))),
+                "sound" => match self.sound(node, v) {
+                    Some(crate::chime::Choice::Off) => b.sound = Some(false),
+                    Some(crate::chime::Choice::On) => b.sound = Some(true),
+                    Some(crate::chime::Choice::Sound(s)) => {
+                        b.sound = Some(true);
+                        b.sound_name = Some(s);
+                    }
+                    None => {}
+                },
+                "sound-critical" => match self.sound(node, v) {
+                    Some(crate::chime::Choice::Sound(s)) => b.sound_critical = Some(s),
+                    Some(_) => self.problem(node, "`sound-critical` is a sound's name or a file's path"),
+                    None => {}
+                },
                 other => self.problem(
                     node,
-                    format!("unknown behaviour `{other}`; use position, appearance, stay, show-at-most, pause-on-hover, do-not-disturb, check-for-updates, clock"),
+                    format!("unknown behaviour `{other}`; use position, appearance, stay, show-at-most, pause-on-hover, do-not-disturb, check-for-updates, clock, sound, sound-critical"),
                 ),
             }
         }
@@ -1414,6 +1451,29 @@ impl Parser<'_> {
         out
     }
 
+    /// `sound #true`, `#false`, a name in the sound theme (`"message-new-instant"`) or an
+    /// absolute path (`"~/sounds/ping.oga"` too).
+    fn sound(&mut self, node: &KdlNode, v: &KdlValue) -> Option<crate::chime::Choice> {
+        use crate::chime::{Choice, Pick};
+        if let Some(b) = v.as_bool() {
+            return Some(if b { Choice::On } else { Choice::Off });
+        }
+        let ok = v.as_string().filter(|s| match Pick::parse(s) {
+            Pick::Name(n) => crate::chime::plain(&n),
+            Pick::File(p) => p.is_absolute(),
+        });
+        if ok.is_none() {
+            self.problem(
+                node,
+                format!(
+                    "`{}` is #true, #false, a sound's name (\"message-new-instant\") or a file's absolute path",
+                    node.name().value()
+                ),
+            );
+        }
+        ok.map(|s| Choice::Sound(s.trim().to_owned()))
+    }
+
     fn rule(&mut self, node: &KdlNode) -> Rule {
         let mut r = Rule {
             line: self.line(node.span().offset()),
@@ -1445,7 +1505,11 @@ impl Parser<'_> {
                 "timeout" => r.timeout = args.first().and_then(|v| self.timeout(child, v)),
                 "hide" => r.hide = true,
                 "interrupt" => r.interrupt = true,
-                other => self.problem(child, format!("unknown rule action `{other}`; use template, tokens, timeout, hide, interrupt")),
+                "sound" => match args.first() {
+                    Some(v) => r.sound = self.sound(child, v),
+                    None => self.problem(child, "`sound` needs a value"),
+                },
+                other => self.problem(child, format!("unknown rule action `{other}`; use template, tokens, timeout, hide, interrupt, sound")),
             }
         }
         r
@@ -1839,7 +1903,8 @@ rule app="Spotify" { hide }
             Routing {
                 hide: false,
                 timeout: Some(Timeout::Never),
-                interrupt: false
+                interrupt: false,
+                sound: None
             }
         );
         n.app = "Spotify".into();

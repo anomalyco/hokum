@@ -356,8 +356,9 @@ fn special(path: &Path) -> bool {
 }
 
 /// A path a notification names, as the regular file it resolves to (so a symlink can't be
-/// re-pointed afterwards), unless it is under `/proc`, `/sys` or `/dev` or too large.
-fn picture_file(path: &Path) -> Option<PathBuf> {
+/// re-pointed afterwards), unless it is under `/proc`, `/sys` or `/dev` or too large. Sound
+/// files a notification names go through it too.
+pub fn picture_file(path: &Path) -> Option<PathBuf> {
     if !path.is_absolute() || special(path) {
         return None;
     }

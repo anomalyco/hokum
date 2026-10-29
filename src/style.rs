@@ -192,6 +192,12 @@ pub struct Behaviour {
     pub check_for_updates: bool,
     /// `{time}`'s format: the desktop's (`auto`), 12-hour or 24-hour.
     pub clock: crate::clock::Clock,
+    /// Play a sound for new notifications.
+    pub sound: bool,
+    /// The sound: a name in the sound theme, or a file.
+    pub sound_name: String,
+    /// Critical notifications' sound.
+    pub sound_critical: String,
 }
 
 impl Default for Behaviour {
@@ -205,6 +211,9 @@ impl Default for Behaviour {
             do_not_disturb: false,
             check_for_updates: true,
             clock: crate::clock::Clock::Auto,
+            sound: false,
+            sound_name: "message-new-instant".into(),
+            sound_critical: "dialog-warning".into(),
         }
     }
 }
