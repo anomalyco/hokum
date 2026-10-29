@@ -38,8 +38,12 @@ pub struct Note {
     pub commands: Vec<(String, Vec<String>)>,
     /// A glyph (Omarchy's `omarchy-glyph`) for the badge, in place of the app's letter.
     pub glyph: Option<String>,
-    /// The sender's `desktop-entry`, named when asking for an activation token.
+    /// The sender's `desktop-entry` (else the entry Hokum found for it), named when asking for
+    /// an activation token.
     pub desktop: Option<String>,
+    /// The desktop entry Hokum found for the app (`crate::entries`): a web app's own, not its
+    /// browser's.
+    pub entry: Option<String>,
     /// 0 low, 1 normal, 2 critical.
     pub urgency: u8,
     pub value: Option<f32>,
@@ -88,6 +92,7 @@ impl Note {
             timeout: Timeout::Default,
             time: crate::clock::Stamp::now(),
             template: None,
+            entry: None,
             icon_src: None,
             image_src: None,
             icon: None,

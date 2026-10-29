@@ -317,9 +317,9 @@ need one. See [Scripts in theming.md](theming.md#scripts).
 
 ## Icons and pictures
 
-`icon` and the `icon` mark look the app's icon up in the user's icon theme (GTK's
-`gtk-icon-theme-name`, its parents, then hicolor) from the notification's `app_icon`, its
-`desktop-entry`, or the app's name; without one they draw the app's letter. `image` is the
+`icon` and the `icon` mark show the app's icon from the user's icon theme, found from the
+notification's `app_icon`, its `desktop-entry`, its process or the app's name (see [Icons and
+pictures in theming.md](theming.md#icons-and-pictures)); without one they draw the app's letter. `image` is the
 picture the notification carries (`image-data` or `image-path`), drawn to fill its box. Emoji in
 text draw in colour.
 

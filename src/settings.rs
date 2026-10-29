@@ -184,7 +184,8 @@ impl Ui {
         let Some(cache) = &self.cache else { return };
         for app in &self.apps {
             self.icons.entry(app.clone()).or_insert_with(|| {
-                crate::icons::for_app("", None, app).map(|p| cache.file(p, 64.0, 2.0))
+                crate::icons::for_app("", crate::apps::entry(app).as_deref(), app)
+                    .map(|p| cache.file(p, 64.0, 2.0))
             });
         }
     }

@@ -173,6 +173,114 @@ fn split_actions(actions: &[String]) -> (bool, Vec<(String, String)>) {
     (has_default, buttons)
 }
 
+/// Chromium-family browsers start a web notification's body with its site, as a link
+/// (`<a href="https://web.whatsapp.com/">web.whatsapp.com</a>`) when the server takes markup or
+/// as text, then a blank line, then the message. The site, and the body after it.
+fn web_site(body: &str) -> Option<(String, &str)> {
+    let (first, rest) = body.split_once('\n').unwrap_or((body, ""));
+    let first = first.trim();
+    let site = match first.strip_prefix("<a href=\"") {
+        Some(link) => {
+            let (url, text) = link.split_once("\">")?;
+            text.strip_suffix("</a>")?;
+            crate::entries::site(url)?
+        }
+        // As text, only with a message after it: a body that is just a domain is a message.
+        None if first.contains(['<', ' ', '/']) || rest.is_empty() => return None,
+        None => crate::entries::site(&format!("https://{first}"))?,
+    };
+    let rest = if rest.is_empty() {
+        rest
+    } else {
+        rest.strip_prefix('\n')
+            .or_else(|| rest.strip_prefix("\r\n"))?
+    };
+    Some((site, rest))
+}
+
+/// Who sent a notification, as a card shows it.
+#[derive(Debug, Default, PartialEq)]
+struct Who {
+    app: String,
+    /// The desktop entry found for it.
+    entry: Option<String>,
+    icon: Option<std::path::PathBuf>,
+    /// For a browser's notification from a site that isn't an installed web app: the site.
+    context: Option<String>,
+    /// The body without a browser's site line.
+    body: String,
+    /// The icon is only one named like the app: an icon the sender names elsewhere beats it.
+    guessed: bool,
+}
+
+/// Finds the app behind a notification and its icon, most specific first: a browser's site
+/// that is an installed web app; the icon the notification names; its `desktop-entry`; its
+/// sandbox (`crate::sender`); its name (`crate::entries::Index::by_name`); the unit, launcher
+/// or AppImage its process runs in; an icon called like it. `pid` is the sender's process.
+fn identify(
+    index: &crate::entries::Index,
+    app: &str,
+    app_icon: &str,
+    desktop: Option<&str>,
+    body: &str,
+    pid: Option<u32>,
+) -> Who {
+    let named = desktop
+        .and_then(|d| index.by_id(d))
+        .or_else(|| index.by_name(app));
+    let mut who = Who {
+        app: app.to_owned(),
+        body: body.to_owned(),
+        ..Who::default()
+    };
+    if named.is_some_and(|e| e.browser)
+        && let Some((site, rest)) = web_site(body)
+    {
+        who.body = rest.to_owned();
+        if let Some(web) = index.by_site(&site) {
+            who.app = web.name.clone();
+            who.entry = Some(web.id.clone());
+            who.icon = web.icon();
+            return who;
+        }
+        who.context = Some(site);
+    }
+    if let Some(icon) = crate::icons::icon(app_icon) {
+        who.icon = Some(icon);
+        who.entry = named.map(|e| e.id.clone());
+        return who;
+    }
+    // The first entry found names the app; the first with an icon that resolves draws it.
+    let clues = pid
+        .map(|p| crate::sender::clues(std::path::Path::new("/proc"), p))
+        .unwrap_or_default();
+    let candidates = [
+        desktop.and_then(|d| index.by_id(d)),
+        crate::sender::sandboxed(index, &clues),
+        index.by_name(app),
+        crate::sender::launched(index, &clues),
+    ];
+    for e in candidates.into_iter().flatten() {
+        if who.entry.is_none() {
+            who.entry = Some(e.id.clone());
+            // An app that sends its ID for a name (Flatpaks through the portal) reads as its name.
+            if (crate::entries::same(app, &e.id) || e.flatpak.as_deref() == Some(app))
+                && !e.name.trim().is_empty()
+            {
+                who.app = crate::entries::bare(&e.name).to_owned();
+            }
+        }
+        if let Some(icon) = e.icon() {
+            who.icon = Some(icon);
+            return who;
+        }
+    }
+    let slug = app.trim().to_lowercase().replace(' ', "-");
+    who.icon = crate::icons::icon(app.trim()).or_else(|| crate::icons::icon(&slug));
+    who.guessed = who.icon.is_some();
+    who
+}
+
 #[zbus::interface(name = "org.freedesktop.Notifications")]
 impl Server {
     fn get_capabilities(&self) -> Vec<&'static str> {
@@ -186,8 +294,10 @@ impl Server {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn notify(
+    async fn notify(
         &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
         app_name: String,
         replaces_id: u32,
         app_icon: String,
@@ -202,36 +312,71 @@ impl Server {
             .filter(|a| !a.is_empty())
             .or_else(|| hint::<String>(&hints, "desktop-entry"))
             .unwrap_or_else(|| "Notification".into());
-        let (summary, body) = (plain(&summary), plain(&body));
-        let slacky = app.eq_ignore_ascii_case("slack")
-            || hint::<String>(&hints, "desktop-entry").as_deref() == Some("slack");
+        // The bus knows the sender's process; the hint is the sender's word for it.
+        let pid = match header.sender() {
+            Some(sender) => match zbus::fdo::DBusProxy::new(conn).await {
+                Ok(bus) => bus
+                    .get_connection_unix_process_id(sender.clone().into())
+                    .await
+                    .ok(),
+                Err(_) => None,
+            },
+            None => None,
+        }
+        .or_else(|| hint::<i64>(&hints, "sender-pid").and_then(|p| u32::try_from(p).ok()))
+        .or_else(|| hint::<u32>(&hints, "sender-pid"));
+        let desktop = hint::<String>(&hints, "desktop-entry").filter(|d| !d.is_empty());
+        let who = identify(
+            &crate::entries::index(),
+            &app,
+            &app_icon,
+            desktop.as_deref(),
+            &body,
+            pid,
+        );
+        let (summary, body) = (plain(&summary), plain(&who.body));
+        let slacky = app.eq_ignore_ascii_case("slack") || desktop.as_deref() == Some("slack");
         let mut n = match slacky.then(|| slack(&summary, &body)).flatten() {
             Some((context, sender, message)) => {
-                let mut n = Note::new(id, app, sender, message);
+                let mut n = Note::new(id, who.app, sender, message);
                 n.context = Some(context);
                 n
             }
-            None => Note::new(id, app, summary, body),
+            None => Note::new(id, who.app, summary, body),
         };
+        n.context = n.context.take().or(who.context);
         n.urgency = hint::<u8>(&hints, "urgency").unwrap_or(1);
         n.value = hint::<i32>(&hints, "value").map(|v| (v as f32 / 100.0).clamp(0.0, 1.0));
         n.tag = hint::<String>(&hints, "x-dunst-stack-tag")
             .or_else(|| hint::<String>(&hints, "x-canonical-private-synchronous"))
             .filter(|t| !t.is_empty());
         n.resident = hint::<bool>(&hints, "resident").unwrap_or(false);
-        let desktop = hint::<String>(&hints, "desktop-entry");
-        n.icon_src = crate::icons::for_app(&app_icon, desktop.as_deref(), &n.app).map(Source::File);
-        n.desktop = desktop;
+        n.icon_src = who.icon.map(Source::File);
+        let guessed = who.guessed;
+        n.entry = who.entry;
+        // The token names the app that raises a window: the sender's own entry, else the one found.
+        n.desktop = desktop.or_else(|| n.entry.clone());
+        let image_path =
+            hint::<String>(&hints, "image-path").or_else(|| hint::<String>(&hints, "image_path"));
+        // A theme icon's name there (`notify-send -i drive-harddisk` with newer libnotify) is an
+        // icon, not a picture: it stands in for an app that has none, or only a guessed one.
+        if (n.icon_src.is_none() || guessed)
+            && let Some(icon) = image_path
+                .as_deref()
+                .filter(|p| !p.starts_with('/') && !p.contains("://"))
+                .and_then(crate::icons::icon)
+        {
+            n.icon_src = Some(Source::File(icon));
+        }
         n.image_src = ["image-data", "image_data", "icon_data"]
             .iter()
             .find_map(|k| hints.get(*k).and_then(image_data))
-            .or_else(|| {
-                let path = hint::<String>(&hints, "image-path")
-                    .or_else(|| hint::<String>(&hints, "image_path"))?;
-                crate::icons::icon(&path).map(Source::File)
-            })
+            .or_else(|| crate::icons::icon(image_path.as_deref()?).map(Source::File))
             // The app's own icon isn't a picture of the notification.
-            .filter(|img| Some(img) != n.icon_src.as_ref());
+            .filter(|img| match &n.icon_src {
+                Some(Source::File(icon)) => !crate::icons::repeats(img, icon),
+                _ => true,
+            });
         (n.has_default, n.actions) = split_actions(&actions);
         if let Some(argv) = hint::<String>(&hints, "omarchy-exec-argv")
             .as_deref()
@@ -411,6 +556,56 @@ fn follow_color_scheme(conn: &Connection, ui: OverlayHandle<Ui>) {
     });
 }
 
+/// The icon theme from the settings portal (GNOME's key, or KDE's), followed as it changes.
+/// Read before claiming the name, so the first card already uses it.
+fn follow_icon_theme(conn: &Connection) {
+    const KEYS: [(&str, &str); 2] = [
+        ("org.gnome.desktop.interface", "icon-theme"),
+        ("org.kde.kdeglobals.Icons", "Theme"),
+    ];
+    let Ok(proxy) = zbus::blocking::Proxy::new(
+        conn,
+        "org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.Settings",
+    ) else {
+        return;
+    };
+    fn text(v: &zbus::zvariant::Value<'_>) -> Option<String> {
+        match v {
+            zbus::zvariant::Value::Str(s) => Some(s.to_string()),
+            zbus::zvariant::Value::Value(inner) => text(inner),
+            _ => None,
+        }
+    }
+    let read = |proxy: &zbus::blocking::Proxy<'_>| {
+        KEYS.iter().find_map(|k| {
+            proxy
+                .call::<_, _, OwnedValue>("ReadOne", k)
+                .ok()
+                .and_then(|v| text(&v))
+                .filter(|t| !t.is_empty())
+        })
+    };
+    // A portal that is still starting (or stuck) gets a second, then answers whenever it can.
+    let (done, wait) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        crate::icons::set_portal_theme(read(&proxy));
+        let _ = done.send(());
+        let Ok(signals) = proxy.receive_signal("SettingChanged") else {
+            return;
+        };
+        for m in signals {
+            if let Ok((ns, key, _)) = m.body().deserialize::<(String, String, OwnedValue)>()
+                && KEYS.iter().any(|(n, k)| *n == ns && *k == key)
+            {
+                crate::icons::set_portal_theme(read(&proxy));
+            }
+        }
+    });
+    let _ = wait.recv_timeout(Duration::from_secs(1));
+}
+
 /// Asks for `org.freedesktop.Notifications` (from its owner too, with `replace`) and says who
 /// has it afterwards.
 pub fn claim(conn: &Connection, replace: bool) -> Daemon {
@@ -494,6 +689,9 @@ pub fn serve(
             },
         )?
         .build()?;
+    // Read the installed apps now rather than on the first notification.
+    std::thread::spawn(crate::entries::index);
+    follow_icon_theme(&conn);
     let daemon = claim(&conn, replace);
     follow_color_scheme(&conn, overlay);
     let lost = conn.clone();
@@ -697,7 +895,148 @@ impl<T: serde::Serialize + zbus::zvariant::DynamicType> Body for T {
 
 #[cfg(test)]
 mod tests {
-    use super::{exec_argv, glyph, omarchy_actions, split_actions};
+    use super::{exec_argv, glyph, identify, omarchy_actions, split_actions, web_site};
+
+    #[test]
+    fn browsers_put_the_site_first() {
+        let linked = "<a href=\"https://calendar.example.org/\">calendar.example.org</a>\n\nMeeting moved to 3pm.";
+        assert_eq!(
+            web_site(linked),
+            Some(("calendar.example.org".into(), "Meeting moved to 3pm."))
+        );
+        assert_eq!(
+            web_site("www.web.whatsapp.com\n\nsee you at 8"),
+            Some(("web.whatsapp.com".into(), "see you at 8"))
+        );
+        assert_eq!(
+            web_site("example.com"),
+            None,
+            "a body that is only a domain is a message"
+        );
+        assert_eq!(web_site("Meeting at 5.30\n\nbring notes"), None);
+        assert_eq!(web_site("ok.\nsecond line"), None);
+        assert_eq!(web_site("<b>bold</b>\n\nx"), None);
+    }
+
+    fn fixture() -> (crate::entries::Index, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("hokum-identify-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in [
+            "chrome.png",
+            "whatsapp.png",
+            "bb.png",
+            "hylki.png",
+            "logo.png",
+        ] {
+            std::fs::write(dir.join(f), "x").unwrap();
+        }
+        let d = dir.display();
+        let e = |id: &str, t: String| {
+            crate::entries::parse(id, std::path::Path::new("/a"), &t).unwrap()
+        };
+        let index = crate::entries::Index {
+            entries: vec![
+                e(
+                    "google-chrome",
+                    format!(
+                        "[Desktop Entry]\nName=Google Chrome\nIcon={d}/chrome.png\nExec=/usr/bin/google-chrome-stable %U\nCategories=Network;WebBrowser;"
+                    ),
+                ),
+                e(
+                    "WhatsApp",
+                    format!(
+                        "[Desktop Entry]\nName=WhatsApp\nIcon={d}/whatsapp.png\nExec=omarchy-launch-webapp https://web.whatsapp.com/"
+                    ),
+                ),
+                e(
+                    "bb_nightly",
+                    format!(
+                        "[Desktop Entry]\nName=bb Nightly (0.46.2)\nStartupWMClass=bb Nightly\nIcon={d}/bb.png\nExec=env A=1 /x/bb.appimage"
+                    ),
+                ),
+                e(
+                    "co.hyprlab.Hylki.Beta",
+                    format!("[Desktop Entry]\nName=Hylki (beta)\nIcon={d}/hylki.png"),
+                ),
+                e(
+                    "electron-noicon",
+                    "[Desktop Entry]\nName=Broken\nIcon=/nowhere/x.png".into(),
+                ),
+            ],
+        };
+        (index, dir)
+    }
+
+    #[test]
+    fn senders_are_found_most_specific_first() {
+        let (index, dir) = fixture();
+        let logo = format!("file://{}/logo.png", dir.display());
+        // A web app: its own name and icon, not the browser's logo, and no site line.
+        let w = identify(
+            &index,
+            "Google Chrome",
+            &logo,
+            Some("google-chrome"),
+            "<a href=\"https://web.whatsapp.com/\">web.whatsapp.com</a>\n\nhi",
+            None,
+        );
+        assert_eq!(
+            (
+                w.app.as_str(),
+                w.entry.as_deref(),
+                w.body.as_str(),
+                w.context
+            ),
+            ("WhatsApp", Some("WhatsApp"), "hi", None)
+        );
+        assert_eq!(w.icon, Some(dir.join("whatsapp.png")));
+        // Any other site: the browser, with the site beside its name.
+        let o = identify(
+            &index,
+            "Google Chrome",
+            &logo,
+            Some("google-chrome"),
+            "example.com\n\nhello",
+            None,
+        );
+        assert_eq!(
+            (o.app.as_str(), o.context.as_deref(), o.body.as_str()),
+            ("Google Chrome", Some("example.com"), "hello")
+        );
+        assert_eq!(o.icon, Some(dir.join("logo.png")));
+        // An app that isn't a browser keeps a body that starts like a site.
+        let b = identify(
+            &index,
+            "bb Nightly",
+            "",
+            Some("bb-desktop"),
+            "example.com\n\nhello",
+            None,
+        );
+        assert_eq!(
+            (b.body.as_str(), b.entry.as_deref()),
+            ("example.com\n\nhello", Some("bb_nightly"))
+        );
+        assert_eq!(
+            b.icon,
+            Some(dir.join("bb.png")),
+            "desktop-entry names no file; StartupWMClass finds it"
+        );
+        let h = identify(&index, "co.hyprlab.Hylki.Beta", "", None, "", None);
+        assert_eq!(h.icon, Some(dir.join("hylki.png")), "an ID in its own case");
+        assert_eq!(h.app, "Hylki", "an ID for a name reads as the entry's name");
+        assert_eq!(
+            identify(&index, "bb Nightly", "", None, "", None).app,
+            "bb Nightly",
+            "a name stays as sent"
+        );
+        let n = identify(&index, "Broken", "", None, "", None);
+        assert_eq!(
+            (n.entry.as_deref(), n.icon.is_none()),
+            (Some("electron-noicon"), true)
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn a_replaced_id_is_never_handed_out_again() {

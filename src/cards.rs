@@ -158,7 +158,7 @@ impl Ui {
             }
         }
         if n.id != crate::welcome::ID && n.id != crate::update::ID {
-            crate::apps::record(&n.app);
+            crate::apps::record(&n.app, n.entry.as_deref());
         }
         let routing = self.theme.routing(&n);
         if routing.hide {

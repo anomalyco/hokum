@@ -171,6 +171,8 @@ fn notify(n) {
 | `n.timeout` | seconds, `0` until dismissed, `()` for the default |
 | `n.template` | a template name, or `()` |
 | `n.actions` | `[#{ key: "reply", label: "Reply" }, ...]` |
+| `n.desktop` | the app's desktop entry (`"org.gnome.Nautilus"`); set it, or change `n.app`, and the card takes that app's icon |
+| `n.icon` | the icon's file; set an icon name or a path to use another |
 | `n.id` | read only |
 
 Scripts have an operation budget: one that loops forever fails that notification, which then
@@ -178,7 +180,21 @@ shows unchanged, and Hokum carries on.
 
 ## Icons and pictures
 
-`icon` and the `icon` mark find the app's icon in your icon theme (GTK's `gtk-icon-theme-name`,
-its parents, then hicolor) from the notification's `app_icon`, its `desktop-entry`, or the app's
-name. `image` shows the picture a notification carries (`image-data` or `image-path`): an
-avatar, an album cover, a screenshot.
+`icon` and the `icon` mark show the app's icon from your icon theme: the one the settings
+portal reports (GNOME's or KDE's setting), else KDE's `kdeglobals`, GTK's `settings.ini`, or
+your desktop's default, then the themes it inherits from, hicolor and Adwaita. Hokum finds the
+app, most specific first:
+
+1. A browser's notification from a site that has a web app launcher (`--app=https://…`, as
+   Omarchy's and Linux Mint's Web Apps write) is that web app's, with its name and icon. From any
+   other site it's the browser's, with the site beside its name (`{context}`).
+2. The icon the notification names (`app_icon`).
+3. Its `desktop-entry`.
+4. Its process: a Flatpak's or Snap's ID, the systemd unit the desktop launched it in
+   (`app-…-ID-….scope`), or the AppImage it runs. Not for `notify-send` or a script in a
+   terminal: those aren't the terminal.
+5. Its name, against desktop entries' IDs (in any case), `StartupWMClass` and `Name=`.
+
+`image` shows the picture a notification carries (`image-data` or `image-path`): an avatar, an
+album cover, a screenshot; a picture that is just the app's icon again (as Electron apps send)
+isn't shown twice. A script can set `n.desktop` or `n.icon` when none of this finds the app.

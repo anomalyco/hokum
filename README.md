@@ -142,8 +142,12 @@ answering them.
   or drop notifications too.
 - **Per app:** mute, how long its cards stay, and breaking through Do not disturb, for every app
   that has sent you a notification.
-- **Icons and pictures:** app icons from your icon theme, and the pictures notifications carry
-  (avatars, album art). Emoji draw in colour.
+- **Icons and pictures:** app icons from your icon theme (the one your desktop set: GNOME's,
+  KDE's or GTK's setting), found from whatever names the app: its icon, its `desktop-entry`,
+  its Flatpak, Snap, AppImage or systemd app unit, or its name. A browser's notification from
+  an installed web app (`--app=https://…` launchers, Omarchy's and Linux Mint's) shows as that
+  app. The pictures notifications carry (avatars, album art) show beside the text, unless the
+  picture is just the app's icon again. Emoji draw in colour.
 - **Behaviour:** screen corner, how long cards stay, how many show, pause while hovered, and
   Do not disturb (only critical notifications and apps you allow show).
 - **Cards:** action buttons, a click for the default action (with an XDG activation token, so

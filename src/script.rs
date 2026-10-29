@@ -34,6 +34,8 @@ pub const STARTER: &str = r##"// Hokum runs notify(n) for every notification bef
 // n.timeout: seconds to stay, 0 to stay until dismissed, () for the default
 // n.template: a template from your theme to draw it with, or () for the theme's choice
 // n.actions: [#{ key: "reply", label: "Reply" }, ...]
+// n.desktop: the app's desktop entry ("org.gnome.Nautilus"); set it, or n.app, to take that app's icon
+// n.icon: the icon's file, or set an icon name or a path
 
 fn notify(n) {
     // Examples:
@@ -82,7 +84,16 @@ impl Script {
         let Some(map) = result.try_cast::<Map>() else {
             return Err("notify(n) must return n, a changed copy of it, or false".into());
         };
+        let before = (
+            n.app.clone(),
+            n.entry
+                .clone()
+                .or_else(|| n.desktop.clone())
+                .unwrap_or_default(),
+            icon_text(n),
+        );
         from_map(n, &map);
+        reicon(n, &map, (&before.0, &before.1, &before.2));
         Ok(true)
     }
 }
@@ -96,6 +107,15 @@ fn to_map(n: &Note) -> Map {
         "context".into(),
         n.context.clone().unwrap_or_default().into(),
     );
+    m.insert(
+        "desktop".into(),
+        n.entry
+            .clone()
+            .or_else(|| n.desktop.clone())
+            .unwrap_or_default()
+            .into(),
+    );
+    m.insert("icon".into(), icon_text(n).into());
     m.insert("urgency".into(), (n.urgency as i64).into());
     m.insert(
         "value".into(),
@@ -138,6 +158,36 @@ fn number(m: &Map, key: &str) -> Option<f64> {
     v.as_float()
         .ok()
         .or_else(|| v.as_int().ok().map(|i| i as f64))
+}
+
+fn icon_text(n: &Note) -> String {
+    match &n.icon_src {
+        Some(crate::icons::Source::File(p)) => p.to_string_lossy().into_owned(),
+        _ => String::new(),
+    }
+}
+
+/// After the script: an icon it named, else the icon of an entry or app it switched to.
+fn reicon(n: &mut Note, m: &Map, before: (&str, &str, &str)) {
+    let (app, desktop, icon) = before;
+    if let Some(v) = text(m, "icon").filter(|v| v != icon && !v.is_empty())
+        && let Some(p) = crate::icons::icon(&v)
+    {
+        n.icon_src = Some(crate::icons::Source::File(p));
+        return;
+    }
+    let entry = match text(m, "desktop").filter(|v| v != desktop && !v.is_empty()) {
+        Some(d) => crate::entries::by_id(&d),
+        None if n.app != app => crate::entries::by_name(&n.app),
+        None => return,
+    };
+    if let Some(e) = entry {
+        if let Some(p) = e.icon() {
+            n.icon_src = Some(crate::icons::Source::File(p));
+        }
+        n.desktop = n.desktop.take().or_else(|| Some(e.id.clone()));
+        n.entry = Some(e.id);
+    }
 }
 
 fn from_map(n: &mut Note, m: &Map) {
