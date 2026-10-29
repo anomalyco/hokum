@@ -1667,13 +1667,24 @@ fn home(p: &std::path::Path) -> String {
     }
 }
 
-/// Opens a file or folder in the desktop's handler for it.
+/// Opens a file or folder in the desktop's handler for it. `gio open` first: outside GNOME,
+/// KDE and the like (Hyprland, Sway), xdg-open runs a `Terminal=true` handler such as nvim
+/// with no terminal, so it exits at once; GIO opens it in one. xdg-open where GIO is missing.
 fn open(path: &std::path::Path) {
-    let _ = std::process::Command::new("xdg-open")
-        .arg(path)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
+    use std::process::{Command, Stdio};
+    let path = path.to_owned();
+    std::thread::spawn(move || {
+        let run = |cmd: &mut Command| {
+            cmd.arg(&path)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success())
+        };
+        if !run(Command::new("gio").arg("open")) {
+            run(&mut Command::new("xdg-open"));
+        }
+    });
 }
 
 fn decode(s: &mut Ui, cache: rune::ImageCache, wait: bool) {
