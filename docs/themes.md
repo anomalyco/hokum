@@ -106,7 +106,7 @@ Sizes here and in templates are points: logical pixels, like CSS `px`, so `font-
 | `shadow` | `"flat"`, `"soft"`, `"deep"`, `"glow"` | `"soft"` | `glow` is a halo in the accent colour |
 | `mark` | `"icon"`, `"letter"`, `"dot"`, `"stripe"`, `"none"` | `"icon"` | What `badge` draws (below) |
 | `enter` | `"slide"`, `"fade"`, `"scale"`, `"drop"` | `"slide"` | How cards arrive and leave |
-| `motion` | seconds and bounce (0 to 1) | `0.38 0.12` | The spring cards move on |
+| `motion` | seconds and bounce (0 to 1) | `0.38 0.12` | The spring cards move on; `motion 0 0` turns animation off |
 
 Marks:
 

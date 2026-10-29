@@ -233,6 +233,11 @@ impl Default for Tokens {
 }
 
 impl Tokens {
+    /// `motion 0`: cards arrive, move and leave at once, whatever `enter` says.
+    pub fn still(&self) -> bool {
+        self.motion.0 <= 0.0
+    }
+
     /// How far content sits from the card's edge to line up past the mark.
     pub fn indent(&self) -> f32 {
         match self.mark {
@@ -1117,10 +1122,20 @@ impl Parser<'_> {
                     )
                 }
                 "motion" => match args.as_slice() {
-                    [d, b] => o.motion = self.num(node, d).zip(self.num(node, b)),
+                    // Out of range, Rune's spring would panic and take the service down.
+                    [d, b] => match self.num(node, d).zip(self.num(node, b)) {
+                        Some((d, b)) if (0.0..1e4).contains(&d) && b > -1.0 && b < 1.0 => {
+                            o.motion = Some((d, b))
+                        }
+                        Some(_) => self.problem(
+                            node,
+                            "`motion` takes 0 seconds (no motion) or more, and a bounce below 1",
+                        ),
+                        None => {}
+                    },
                     _ => self.problem(
                         node,
-                        "`motion` takes a duration in seconds and a bounce (0 to 1)",
+                        "`motion` takes a duration in seconds (0 for none) and a bounce (0 to 1)",
                     ),
                 },
                 other => self.problem(node, format!("unknown token `{other}`")),
@@ -1768,6 +1783,21 @@ mod tests {
         let own = parse_config("\n\nrule app=\"x\" { template \"nope\" }\n").unwrap();
         let missing = missing_templates(&own.rules, &base.merge(&own));
         assert_eq!(missing.iter().map(|p| p.line).collect::<Vec<_>>(), [3]);
+    }
+
+    #[test]
+    fn motion_zero_is_still_and_springs_that_would_panic_are_problems() {
+        let t = parse("name \"x\"\ntokens {\n  motion 0 0\n}\n", "x").unwrap();
+        assert!(t.base(true).still());
+        assert!(!Tokens::default().still());
+        for bad in ["-0.2 0", "0.3 1", "0.3 -1"] {
+            let e =
+                parse(&format!("name \"x\"\ntokens {{\n  motion {bad}\n}}\n"), "x").unwrap_err();
+            assert!(
+                e[0].line == 3 && e[0].message.contains("motion"),
+                "{bad}: {e:?}"
+            );
+        }
     }
 
     #[test]

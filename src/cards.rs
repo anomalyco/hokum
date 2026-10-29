@@ -545,6 +545,9 @@ pub fn stack<S: Cards>(
         Side::Right => col.pin(None, t, Some(GUTTER), b),
         Side::Center => col,
     };
+    if base.still() {
+        col = col.instant_changes();
+    }
     let more = more.map(|m| {
         let row = row().key("more-row").w_full().child(m);
         match side {
