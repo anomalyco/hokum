@@ -3,15 +3,17 @@ name = "hokum"
 version = "0.1.2"
 edition = "2024"
 license = "MIT"
-description = "Hokum (hokum.app): a freedesktop notification daemon for Wayland, drawn with Rune."
+description = "Hokum (hokum.app): a control center for Wayland (notifications, sound, Bluetooth), drawn with Rune."
 homepage = "https://hokum.app"
 repository = "https://github.com/anomalyco/hokum"
 
 [dependencies]
-rune = { git = "https://github.com/anomalyco/rune.git", rev = "e5a6431ccbdbee8442921a3e28e25185f2707f12" }
-rune-kit = { git = "https://github.com/anomalyco/rune.git", rev = "e5a6431ccbdbee8442921a3e28e25185f2707f12" }
-rune-theme-opencode = { git = "https://github.com/anomalyco/rune.git", rev = "e5a6431ccbdbee8442921a3e28e25185f2707f12" }
+rune = { git = "https://github.com/anomalyco/rune.git", rev = "b41b6a2d12821a53c1a73b95a29be4d2c24040e9" }
+rune-kit = { git = "https://github.com/anomalyco/rune.git", rev = "b41b6a2d12821a53c1a73b95a29be4d2c24040e9" }
+rune-theme-opencode = { git = "https://github.com/anomalyco/rune.git", rev = "b41b6a2d12821a53c1a73b95a29be4d2c24040e9" }
 zbus = "5"
+pipewire = "0.10"
+async-channel = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 libc = "0.2"

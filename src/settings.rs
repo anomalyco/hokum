@@ -1,11 +1,16 @@
-//! The settings window, hosted by the running service beside the overlay. It picks a theme and
-//! sets behaviour and per-app routing in config.kdl (keeping its comments); the look itself is
-//! left to theme files, which coding agents write from docs/themes.md. Editing the file by hand
-//! updates the window. The preview draws the same cards with the same code.
+//! The Hokum window, hosted by the running service beside the overlay: one sidebar item per
+//! module (Notifications, Sound, Bluetooth), each module's levels inside its own section.
+//!
+//! Notifications picks a theme and sets behaviour and per-app routing in config.kdl (keeping its
+//! comments); the look itself is left to theme files, which coding agents write from
+//! docs/themes.md. Editing the file by hand updates the window. The preview draws the same cards
+//! with the same code. Sound and Bluetooth are `crate::sound::ui` and `crate::bluetooth::ui`;
+//! the same state also draws the tray panel (`crate::panel`), with [`Surface::Panel`].
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use rune::{AppSpec, Color, Cursor, Cx, El, Image, OverlayHandle, ScrollSpec, Tx, WindowOptions, col, el, row, text};
+use rune::{AppSpec, Color, Cursor, Cx, El, Image, KeyEvent, OverlayHandle, ScrollSpec, Tx, WindowOptions, col, el, row, text};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, SegmentedControl, Sidebar, SidebarRow, Switch};
 use zbus::blocking::Connection;
 
@@ -18,6 +23,8 @@ use crate::watch::Config;
 
 const NAV: f32 = 200.0;
 const CONTENT: f32 = 560.0;
+/// Sound's and Bluetooth's column.
+const MODULE: f32 = 520.0;
 pub const SIZE: (f32, f32) = (1260.0, 780.0);
 
 /// Whether this process answers `org.freedesktop.Notifications`.
@@ -35,8 +42,42 @@ enum ScriptStatus {
     Broken(String),
 }
 
+/// The window's sections, one per module.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Section {
+    Notifications,
+    Sound,
+    Bluetooth,
+}
+
+impl Section {
+    pub fn word(self) -> &'static str {
+        match self {
+            Section::Notifications => "notifications",
+            Section::Sound => "sound",
+            Section::Bluetooth => "bluetooth",
+        }
+    }
+
+    pub fn from_word(w: &str) -> Option<Section> {
+        match w {
+            "notifications" => Some(Section::Notifications),
+            "sound" => Some(Section::Sound),
+            "bluetooth" | "bt" => Some(Section::Bluetooth),
+            _ => None,
+        }
+    }
+}
+
+/// What this state draws: the window, or the tray's panel.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Surface {
+    Window,
+    Panel,
+}
+
 pub struct Ui {
-    loaded: Loaded,
+    pub loaded: Loaded,
     pub daemon: Daemon,
     pub overlay: Option<OverlayHandle<crate::cards::Ui>>,
     pub bus: Option<Connection>,
@@ -55,6 +96,17 @@ pub struct Ui {
     samples: Vec<Note>,
     tile_note: Note,
     cache: Option<rune::ImageCache>,
+    pub section: Section,
+    pub surface: Surface,
+    pub sound: crate::sound::ui::Ui,
+    pub bluetooth: crate::bluetooth::ui::Ui,
+    /// Starts and stops the modules' backends (the service's window only).
+    pub wiring: Option<Arc<crate::modules::Wiring>>,
+    /// Why a module couldn't start.
+    pub sound_error: Option<String>,
+    pub bluetooth_error: Option<String>,
+    /// Hides the tray panel (the panel only).
+    pub dismiss: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl Cards for Ui {
@@ -90,7 +142,11 @@ impl Ui {
 
     /// The config, its theme and the script from files (at startup, and whenever they change).
     pub fn configure(&mut self, config: Config) {
+        if let Some(w) = self.wiring.clone() {
+            w.configure(self, &config);
+        }
         self.loaded = config.loaded;
+        self.bluetooth.sound = self.loaded.modules.sound;
         self.copied = false;
         self.script = match config.script.as_deref().map(crate::script::Script::compile) {
             None => ScriptStatus::None,
@@ -150,6 +206,43 @@ impl Ui {
     /// Writes one behaviour value, or removes it when it's what the theme already says.
     fn behave(&mut self, key: &'static str, value: Value, same: bool) {
         self.edit(|e, _| if same { e.remove_behaviour(key) } else { e.set_behaviour(key, value) });
+    }
+
+    /// Turns a module on or off in config.kdl; the service starts or stops its backend.
+    fn set_module(&mut self, section: Section, on: bool) {
+        self.edit(|e, _| e.set_module(section.word(), on));
+    }
+
+    pub fn toggle_dnd(&mut self) {
+        let v = !self.loaded.behaviour.do_not_disturb;
+        self.behave("do-not-disturb", Value::Flag(v), v == Behaviour::default().do_not_disturb);
+    }
+
+    /// Goes to a section: in the window at once; from the panel, by opening the window there.
+    pub fn show_section(&mut self, section: Section) {
+        match self.surface {
+            Surface::Window => self.section = section,
+            Surface::Panel => {
+                if let Some(w) = &self.handle {
+                    crate::modules::open(w, Some(section), None);
+                }
+                if let Some(d) = &self.dismiss {
+                    d();
+                }
+            }
+        }
+    }
+
+    /// The window was hidden: meters and discovery stop.
+    pub fn hidden(&mut self) {
+        self.sound.hidden();
+        self.bluetooth.hidden();
+    }
+
+    /// The window is about to show.
+    pub fn shown(&mut self) {
+        self.sound.visible = true;
+        self.bluetooth.visible = true;
     }
 
     fn set_app(&mut self, app: String, action: &'static str, value: Option<Vec<Value>>) {
@@ -668,7 +761,7 @@ fn app_page(s: &Ui, k: &Kit, app: &str) -> Vec<El> {
     vec![head, section(k, "app", None, rows)]
 }
 
-/// The pages the navigation goes to.
+/// Notifications' pages: three tabs, and one app's page under Applications.
 #[derive(Clone, PartialEq, Debug)]
 enum Page {
     Appearance,
@@ -677,20 +770,10 @@ enum Page {
     App(String),
 }
 
-static APPEARANCE_ICON: rune::Icon = rune::Icon {
-    name: "appearance",
-    view: 16.0,
-    body: r#"<circle cx="8" cy="8" r="5.5" stroke="currentColor"/><path d="M8 2.5A5.5 5.5 0 0 0 8 13.5Z" fill="currentColor"/>"#,
-};
-static BEHAVIOUR_ICON: rune::Icon = rune::Icon {
-    name: "behaviour",
+static BELL: rune::Icon = rune::Icon {
+    name: "bell",
     view: 16.0,
     body: r#"<path d="M4.5 10.5V7a3.5 3.5 0 0 1 7 0v3.5l1 1.5h-9l1-1.5Z" stroke="currentColor" stroke-linejoin="round"/><path d="M6.5 14h3" stroke="currentColor"/>"#,
-};
-static APPS_ICON: rune::Icon = rune::Icon {
-    name: "apps",
-    view: 16.0,
-    body: r#"<rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" stroke="currentColor"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1" stroke="currentColor"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1" stroke="currentColor"/><rect x="9" y="9" width="4.5" height="4.5" rx="1" stroke="currentColor"/>"#,
 };
 static CHEVRON: rune::Icon = rune::Icon { name: "chevron", view: 16.0, body: r#"<path d="M6.5 4L10.5 8L6.5 12" stroke="currentColor"/>"# };
 static BACK: rune::Icon = rune::Icon { name: "back", view: 16.0, body: r#"<path d="M9.5 4L5.5 8L9.5 12" stroke="currentColor"/>"# };
@@ -701,18 +784,28 @@ fn go(s: &mut Ui, tx: &mut Tx, page: Page) {
     s.page = page;
 }
 
+fn go_section(s: &mut Ui, tx: &mut Tx, section: Section) {
+    tx.instant();
+    s.section = section;
+}
+
 fn nav(s: &Ui, k: &Kit) -> El {
     let c = &k.c;
-    let item = |key: &str, label: &str, icon: &'static rune::Icon, page: Page, on: bool| {
-        SidebarRow::new(label).icon(icon).selected(on).on_select(move |s: &mut Ui, tx: &mut Tx| go(s, tx, page.clone())).build(k).key(key.to_owned())
+    let item = |key: &str, label: &str, icon: &'static rune::Icon, section: Section| {
+        SidebarRow::new(label)
+            .icon(icon)
+            .selected(s.section == section)
+            .on_select(move |s: &mut Ui, tx: &mut Tx| go_section(s, tx, section))
+            .build(k)
+            .key(key.to_owned())
     };
     let title = text("Hokum").key("name").font(rune::TextStyle { size: 20.0, ..k.ty.ui_medium }.lh(24.0)).color(c.text_base).px(8.0).pt(20.0).pb(12.0);
     let list = Sidebar::new()
-        .label("Settings")
+        .label("Hokum")
         .header(title)
-        .child(item("nav-appearance", "Appearance", &APPEARANCE_ICON, Page::Appearance, s.page == Page::Appearance))
-        .child(item("nav-behaviour", "Behaviour", &BEHAVIOUR_ICON, Page::Behaviour, s.page == Page::Behaviour))
-        .child(item("nav-apps", "Applications", &APPS_ICON, Page::Apps, matches!(s.page, Page::Apps | Page::App(_))))
+        .child(item("nav-notifications", "Notifications", &BELL, Section::Notifications))
+        .child(item("nav-sound", "Sound", &crate::sound::ui::glyphs::SPEAKER, Section::Sound))
+        .child(item("nav-bluetooth", "Bluetooth", &crate::bluetooth::ui::glyphs::BLUETOOTH, Section::Bluetooth))
         .build(k);
     row()
         .key("nav")
@@ -723,20 +816,44 @@ fn nav(s: &Ui, k: &Kit) -> El {
         .child(el().key("edge").w(1.0).h_full().fill(c.border_muted))
 }
 
-fn content(s: &Ui, k: &Kit) -> El {
+fn page_title(k: &Kit, t: &str) -> El {
+    text(t.to_owned()).key("title").font(rune::TextStyle { size: 20.0, ..k.ty.ui_medium }.lh(24.0)).color(k.c.text_base)
+}
+
+/// config.kdl's problems and failed saves, under any section's title.
+fn problems(s: &Ui, k: &Kit) -> Vec<El> {
     let c = &k.c;
-    let mut header = col().key("header").w_full().px(24.0).pt(20.0).pb(14.0).gap(8.0).child(status(k, s));
+    let mut out = Vec::new();
     if let Some(e) = &s.error {
-        header = header.child(text(e.clone()).key("error").font(k.ty.small).color(c.danger.fg).wrap().w_full());
+        out.push(text(e.clone()).key("error").font(k.ty.small).color(c.danger.fg).wrap().w_full());
     }
     for (i, p) in s.loaded.problems.iter().take(6).enumerate() {
-        header = header.child(text(p.to_string()).key(format!("problem-{i}")).font(k.ty.small.mono()).color(c.danger.fg).wrap().w_full().selectable(true));
+        out.push(text(p.to_string()).key(format!("problem-{i}")).font(k.ty.small.mono()).color(c.danger.fg).wrap().w_full().selectable(true));
     }
-    let page_title = |t: &str| text(t.to_owned()).key("title").font(rune::TextStyle { size: 20.0, ..k.ty.ui_medium }.lh(24.0)).color(c.text_base);
+    out
+}
+
+const TABS: &[(&str, &str)] = &[("appearance", "Appearance"), ("behaviour", "Behaviour"), ("apps", "Applications")];
+
+fn notifications(s: &Ui, k: &Kit) -> El {
+    let c = &k.c;
+    let tab = match s.page {
+        Page::Appearance => 0,
+        Page::Behaviour => 1,
+        Page::Apps | Page::App(_) => 2,
+    };
+    let labels: Vec<&str> = TABS.iter().map(|t| t.1).collect();
+    let tabs = SegmentedControl::new(&labels, Some(tab))
+        .width(Some(300.0))
+        .on_pick(|s: &mut Ui, i: usize, tx: &mut Tx| go(s, tx, [Page::Appearance, Page::Behaviour, Page::Apps][i].clone()))
+        .build(k)
+        .key("tabs");
+    let title = row().key("title-row").w_full().gap(12.0).center_y().child(page_title(k, "Notifications")).child(el().key("fill").grow(1.0)).child(tabs);
+    let header = col().key("header").w_full().px(24.0).pt(20.0).pb(14.0).gap(12.0).child(title).child(status(k, s)).children(problems(s, k));
     let (key, body): (&str, Vec<El>) = match &s.page {
-        Page::Appearance => ("appearance", vec![page_title("Appearance"), themes(s, k), own_theme(s, k), files(s, k)]),
-        Page::Behaviour => ("behaviour", vec![page_title("Behaviour"), behaviour(s, k)]),
-        Page::Apps => ("apps", vec![page_title("Applications"), apps(s, k)]),
+        Page::Appearance => ("appearance", vec![themes(s, k), own_theme(s, k), files(s, k)]),
+        Page::Behaviour => ("behaviour", vec![behaviour(s, k)]),
+        Page::Apps => ("apps", vec![apps(s, k)]),
         Page::App(app) => {
             let back = Button::new("Applications")
                 .icon(&BACK)
@@ -759,6 +876,75 @@ fn content(s: &Ui, k: &Kit) -> El {
         .child(header)
         .child(el().key("rule").w_full().h(1.0).fill(c.border_muted))
         .child(col().key(format!("scroll-{key}")).w_full().grow(1.0).h(0.0).scroll(ScrollSpec { stick_bottom: false }).clip_fade(0.0, 0.0, 0.0, 16.0).child(page))
+}
+
+/// A faint mark and at most one quiet line: a module that's off, or can't run.
+fn quiet(k: &Kit, glyph: &'static rune::Icon, line: Option<String>) -> El {
+    col()
+        .key("quiet")
+        .w_full()
+        .py(48.0)
+        .gap(12.0)
+        .items_center()
+        .child(rune::icon(glyph, 40.0).key("mark").color(k.c.border_strong))
+        .children(line.map(|l| text(l).key("line").font(k.ty.small).color(k.c.text_faint).wrap()))
+}
+
+/// Sound or Bluetooth: the title and the module's switch, then the module's own screens,
+/// centred in the space beside the sidebar.
+fn module(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> El {
+    let c = &k.c;
+    let (section, title, on, error, glyph) = match s.section {
+        Section::Bluetooth => (Section::Bluetooth, "Bluetooth", s.loaded.modules.bluetooth, &s.bluetooth_error, &crate::bluetooth::ui::glyphs::BLUETOOTH),
+        _ => (Section::Sound, "Sound", s.loaded.modules.sound, &s.sound_error, &crate::sound::ui::glyphs::SPEAKER),
+    };
+    let switch = Switch::new(on)
+        .label(title)
+        .hide_label()
+        .on_toggle(move |s: &mut Ui| {
+            let on = match section {
+                Section::Bluetooth => s.loaded.modules.bluetooth,
+                _ => s.loaded.modules.sound,
+            };
+            s.set_module(section, !on)
+        })
+        .build(k)
+        .key("module-switch");
+    let header = col()
+        .key("header")
+        .w_full()
+        .px(24.0)
+        .pt(20.0)
+        .pb(14.0)
+        .gap(8.0)
+        .child(row().key("title-row").w_full().h(28.0).gap(12.0).center_y().child(page_title(k, title)).child(el().key("fill").grow(1.0)).child(switch))
+        .children(problems(s, k));
+    let body = match (on, error) {
+        (false, _) => quiet(k, glyph, None),
+        (true, Some(e)) => quiet(k, glyph, Some(e.clone())),
+        (true, None) => match section {
+            Section::Bluetooth => crate::bluetooth::ui::section(&s.bluetooth, k, layer),
+            _ => crate::sound::ui::section(&s.sound, k, layer),
+        },
+    };
+    let column = col().key(format!("module-{}", section.word())).w(MODULE).pb(32.0).child(body);
+    col()
+        .key("content")
+        .grow(1.0)
+        .h_full()
+        .fill(c.page)
+        .child(row().key("header-row").w_full().justify_center().child(header.w(MODULE + 12.0)))
+        .child(row().key("rule-row").w_full().justify_center().child(el().key("rule").w(MODULE + 12.0).h(1.0).fill(c.border_muted)))
+        .child(
+            col()
+                .key(format!("scroll-{}", section.word()))
+                .w_full()
+                .grow(1.0)
+                .h(0.0)
+                .scroll(ScrollSpec { stick_bottom: false })
+                .clip_fade(0.0, 0.0, 0.0, 16.0)
+                .child(row().key("centre").w_full().pt(8.0).justify_center().child(column)),
+        )
 }
 
 fn preview(s: &Ui, k: &Kit, window: &Kit) -> El {
@@ -786,9 +972,18 @@ fn preview(s: &Ui, k: &Kit, window: &Kit) -> El {
         )
 }
 
-fn view(s: &Ui, cx: &mut Cx<Ui>) -> El {
+pub fn view(s: &Ui, cx: &mut Cx<Ui>) -> El {
     let (window, preview_kit) = kit(s, cx);
-    row().key("window").w_full().h_full().fill(window.c.page).child(nav(s, window)).child(content(s, window)).child(preview(s, preview_kit, window))
+    if s.surface == Surface::Panel {
+        return crate::panel::view(s, window);
+    }
+    let mut layer = Vec::new();
+    let main = match s.section {
+        Section::Notifications => row().key("notifications").grow(1.0).h_full().child(notifications(s, window)).child(preview(s, preview_kit, window)),
+        _ => module(s, window, &mut layer),
+    };
+    let body = row().key("window").w_full().h_full().fill(window.c.page).child(nav(s, window)).child(main);
+    col().key("root").w_full().h_full().child(body).children(layer)
 }
 
 fn tile_note() -> Note {
@@ -816,6 +1011,14 @@ pub fn init() -> Ui {
         samples: samples(),
         tile_note: tile_note(),
         cache: None,
+        section: Section::Notifications,
+        surface: Surface::Window,
+        sound: crate::sound::ui::Ui::new(None, crate::sound::ui::Mode::Window),
+        bluetooth: crate::bluetooth::ui::Ui::new(None, crate::bluetooth::ui::Mode::Window),
+        wiring: None,
+        sound_error: None,
+        bluetooth_error: None,
+        dismiss: None,
     };
     ui.configure(crate::watch::load());
     ui
@@ -846,6 +1049,7 @@ fn decode(s: &mut Ui, cache: rune::ImageCache, wait: bool) {
     s.cache = Some(cache);
     s.decode_icons();
     if wait {
+        crate::sound::ui::decode_now(&mut s.sound);
         for img in s.icons.values().flatten() {
             let _ = img.wait();
         }
@@ -883,16 +1087,128 @@ fn scene_app(s: &mut Ui) {
     s.page = Page::App(s.apps.first().cloned().unwrap_or_else(|| "Slack".into()));
 }
 
-fn setup(s: &mut Ui, waker: rune::Waker) {
+/// Sound and Bluetooth on their mock backends' samples, whatever config.kdl says.
+fn mock_modules(s: &mut Ui) {
+    scene_hokum(s);
+    s.loaded.modules = crate::theme::Modules::default();
+    crate::sound::ui::scenes::main(&mut s.sound);
+    crate::bluetooth::ui::scenes::main(&mut s.bluetooth);
+    s.bluetooth.sound = true;
+}
+
+fn scene_sound(s: &mut Ui) {
+    mock_modules(s);
+    s.section = Section::Sound;
+}
+
+fn scene_sound_expanded(s: &mut Ui) {
+    scene_sound(s);
+    crate::sound::ui::scenes::expanded(&mut s.sound);
+}
+
+fn scene_sound_advanced(s: &mut Ui) {
+    scene_sound(s);
+    crate::sound::ui::scenes::advanced(&mut s.sound);
+}
+
+fn scene_sound_lost(s: &mut Ui) {
+    scene_sound(s);
+    crate::sound::ui::scenes::lost(&mut s.sound);
+}
+
+fn scene_sound_off(s: &mut Ui) {
+    scene_sound(s);
+    s.loaded.modules.sound = false;
+}
+
+fn scene_bluetooth(s: &mut Ui) {
+    mock_modules(s);
+    s.section = Section::Bluetooth;
+}
+
+fn scene_bluetooth_expanded(s: &mut Ui) {
+    scene_bluetooth(s);
+    crate::bluetooth::ui::scenes::expanded(&mut s.bluetooth);
+}
+
+fn scene_bluetooth_pairing(s: &mut Ui) {
+    scene_bluetooth(s);
+    crate::bluetooth::ui::scenes::pairing(&mut s.bluetooth);
+}
+
+fn scene_bluetooth_advanced(s: &mut Ui) {
+    scene_bluetooth(s);
+    crate::bluetooth::ui::scenes::advanced(&mut s.bluetooth);
+}
+
+fn scene_bluetooth_off(s: &mut Ui) {
+    scene_bluetooth(s);
+    crate::bluetooth::ui::scenes::off(&mut s.bluetooth);
+}
+
+/// The tray panel, with the input showing (an app is recording) and Bluetooth devices.
+fn scene_panel(s: &mut Ui) {
+    mock_modules(s);
+    s.surface = Surface::Panel;
+    s.sound.mode = crate::sound::ui::Mode::Popover;
+    s.bluetooth.mode = crate::bluetooth::ui::Mode::Popover;
+}
+
+pub fn setup(s: &mut Ui, waker: rune::Waker) {
+    crate::sound::ui::setup(&mut s.sound, waker.clone());
     decode(s, rune::ImageCache::new(waker), false);
+}
+
+/// Keys go to the section on screen (in the panel: Esc closes what's open, then the panel).
+pub fn on_key(s: &mut Ui, e: &KeyEvent, tx: &mut Tx) -> bool {
+    if s.surface == Surface::Panel {
+        if e.key != rune::Key::Escape {
+            return false;
+        }
+        if s.sound.escape(tx) || s.bluetooth.escape(tx) {
+            return true;
+        }
+        if let Some(d) = &s.dismiss {
+            d();
+        }
+        return true;
+    }
+    match s.section {
+        Section::Sound if s.loaded.modules.sound => crate::sound::ui::on_key(&mut s.sound, e, tx),
+        Section::Bluetooth if s.loaded.modules.bluetooth => crate::bluetooth::ui::on_key(&mut s.bluetooth, e, tx),
+        Section::Notifications if e.key == rune::Key::Escape && matches!(s.page, Page::App(_)) => {
+            go(s, tx, Page::Apps);
+            true
+        }
+        _ => false,
+    }
 }
 
 pub fn spec() -> AppSpec<Ui> {
     AppSpec {
-        scenes: &[("hokum", scene_hokum), ("other", scene_other), ("behaviour", scene_behaviour), ("applications", scene_applications), ("app", scene_app)],
+        scenes: &[
+            ("hokum", scene_hokum),
+            ("notifications", scene_hokum),
+            ("other", scene_other),
+            ("behaviour", scene_behaviour),
+            ("applications", scene_applications),
+            ("app", scene_app),
+            ("sound", scene_sound),
+            ("sound-expanded", scene_sound_expanded),
+            ("sound-advanced", scene_sound_advanced),
+            ("sound-lost", scene_sound_lost),
+            ("sound-off", scene_sound_off),
+            ("bluetooth", scene_bluetooth),
+            ("bluetooth-expanded", scene_bluetooth_expanded),
+            ("bluetooth-pairing", scene_bluetooth_pairing),
+            ("bluetooth-advanced", scene_bluetooth_advanced),
+            ("bluetooth-off", scene_bluetooth_off),
+            ("panel", scene_panel),
+        ],
         fonts: rune_theme_opencode::FONTS,
         families: rune_theme_opencode::FAMILIES,
         setup: Some(setup),
+        on_key: Some(on_key),
         ..AppSpec::new("Hokum", SIZE, init, view)
     }
 }
@@ -927,13 +1243,19 @@ mod tests {
         ui.apps = vec!["Slack".into()];
         let mut rt = rune::Runtime::new(ui, view, SIZE, rune::Env::default());
         rt.frame(0.0);
-        press(&mut rt, "nav-behaviour");
+        press(&mut rt, "tabs/segment1");
         shown_at_once(&rt, "page-behaviour");
-        press(&mut rt, "nav-apps");
+        press(&mut rt, "tabs/segment2");
         shown_at_once(&rt, "page-apps");
         press(&mut rt, "app-0");
         shown_at_once(&rt, "page-app");
         press(&mut rt, "back");
+        shown_at_once(&rt, "page-apps");
+        press(&mut rt, "nav-sound");
+        shown_at_once(&rt, "module-sound");
+        press(&mut rt, "nav-bluetooth");
+        shown_at_once(&rt, "module-bluetooth");
+        press(&mut rt, "nav-notifications");
         shown_at_once(&rt, "page-apps");
     }
 }

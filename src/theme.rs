@@ -512,6 +512,20 @@ impl Behave {
     }
 }
 
+/// The control center's parts beside notifications: `modules { sound #true; bluetooth #true }`.
+/// Both are on unless the config turns them off; themes don't set them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Modules {
+    pub sound: bool,
+    pub bluetooth: bool,
+}
+
+impl Default for Modules {
+    fn default() -> Self {
+        Modules { sound: true, bluetooth: true }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Theme {
     pub name: String,
@@ -520,6 +534,7 @@ pub struct Theme {
     /// The theme this one starts from (`theme "signal"`).
     pub base: Option<String>,
     pub behave: Behave,
+    pub modules: Modules,
     pub tokens: Overrides,
     pub dark: Overrides,
     pub light: Overrides,
@@ -559,6 +574,7 @@ impl Theme {
             id: String::new(),
             base: None,
             behave: Behave::default(),
+            modules: Modules::default(),
             tokens: Overrides::default(),
             dark: Overrides::default(),
             light: Overrides::default(),
@@ -892,6 +908,26 @@ impl Parser<'_> {
         b
     }
 
+    /// `modules { sound #false; bluetooth #true }`
+    fn modules(&mut self, block: &KdlNode) -> Modules {
+        let mut m = Modules::default();
+        for node in self.children(block) {
+            let on = match self.args(node).first().and_then(|v| v.as_bool()) {
+                Some(b) => b,
+                None => {
+                    self.problem(node, format!("`{}` is #true or #false", node.name().value()));
+                    continue;
+                }
+            };
+            match node.name().value() {
+                "sound" => m.sound = on,
+                "bluetooth" => m.bluetooth = on,
+                other => self.problem(node, format!("unknown module `{other}`; use sound, bluetooth")),
+            }
+        }
+        m
+    }
+
     fn node_props(&mut self, node: &KdlNode) -> Props {
         let mut p = Props::default();
         for (key, v) in self.props(node) {
@@ -1116,6 +1152,8 @@ fn parse_as(src: &str, id: &str, config: bool) -> Result<Theme, Vec<Problem>> {
             },
             "behaviour" | "behavior" if config => theme.behave = p.behave(node),
             "behaviour" | "behavior" => p.problem(node, "themes don't set behaviour; it belongs in config.kdl's `behaviour { }`"),
+            "modules" if config => theme.modules = p.modules(node),
+            "modules" => p.problem(node, "themes don't set modules; they belong in config.kdl's `modules { }`"),
             "tokens" => {
                 let o = p.tokens(node);
                 match args.first().and_then(|v| v.as_string()) {
@@ -1136,7 +1174,7 @@ fn parse_as(src: &str, id: &str, config: bool) -> Result<Theme, Vec<Problem>> {
                 let r = p.rule(node);
                 theme.rules.push(r);
             }
-            other => p.problem(node, format!("unknown section `{other}`; use name, theme, behaviour, tokens, template, rule")),
+            other => p.problem(node, format!("unknown section `{other}`; use name, theme, behaviour, modules, tokens, template, rule")),
         }
     }
     if p.problems.is_empty() { Ok(theme) } else { Err(p.problems) }

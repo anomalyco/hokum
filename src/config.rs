@@ -33,6 +33,8 @@ pub struct Loaded {
     /// What Hokum draws with.
     pub theme: Theme,
     pub behaviour: Behaviour,
+    /// Sound and Bluetooth, on or off.
+    pub modules: crate::theme::Modules,
     /// What's wrong with the config or its theme; Hokum keeps drawing with the last good one.
     pub problems: Vec<Problem>,
 }
@@ -77,7 +79,8 @@ fn load_src(src: &str) -> Loaded {
     theme.name = base.name.clone();
     problems.extend(crate::theme::missing_templates(&own.rules, &theme));
     let behaviour = own.behaviour();
-    Loaded { base_id, base, own, theme, behaviour, problems }
+    let modules = own.modules;
+    Loaded { base_id, base, own, theme, behaviour, modules, problems }
 }
 
 /// `hokum check [path]`: loads the config (or `path`, a config or theme file) the way the
@@ -403,6 +406,18 @@ impl Edit {
         }
     }
 
+    /// `modules { <key> #false }`, or no line when it's on (the default); an empty block goes.
+    pub fn set_module(&mut self, key: &str, on: bool) {
+        if on {
+            if self.doc.nodes().iter().any(|n| n.name().value() == "modules") {
+                Self::remove_in(self.block("modules"), key);
+                self.prune("modules");
+            }
+        } else {
+            Self::set_in(self.block("modules"), key, &[Value::Flag(false)]);
+        }
+    }
+
     /// The `rule app="…"` the settings window manages for `app`: one matcher, `app`, exactly.
     fn app_rule(&mut self, app: &str, create: bool) -> Option<&mut KdlNode> {
         let i = self.doc.nodes().iter().position(|n| n.name().value() == "rule" && is_app_rule(n, app));
@@ -544,6 +559,20 @@ mod tests {
         e.set_app("Slack", "timeout", None);
         e.set_app("Slack", "interrupt", None);
         assert_eq!(e.text(), "theme \"soft\"\nrule app=\"Slack*\" { hide }\n");
+    }
+
+    #[test]
+    fn modules_are_on_unless_the_config_says_otherwise() {
+        assert_eq!(load_src(DEFAULT).modules, crate::theme::Modules { sound: true, bluetooth: true });
+        let mut e = edit("theme \"soft\"\n");
+        e.set_module("bluetooth", false);
+        assert!(e.text().contains("modules {\n    bluetooth #false\n}"), "{}", e.text());
+        let l = load_src(&e.text());
+        assert!(l.ok() && l.modules.sound && !l.modules.bluetooth, "{:?}", l.problems);
+        e.set_module("bluetooth", true);
+        assert_eq!(e.text(), "theme \"soft\"\n");
+        assert!(!load_src("modules { radio #true }\n").ok());
+        assert!(crate::theme::parse("modules { sound #false }\n", "t").is_err(), "themes don't set modules");
     }
 
     #[test]

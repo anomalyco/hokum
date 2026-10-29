@@ -294,9 +294,14 @@ struct Window {
 
 #[zbus::interface(name = "app.hokum.Settings")]
 impl Window {
-    /// Show the settings window, focused with the launcher's activation token when there is one.
+    /// Show the window, focused with the launcher's activation token when there is one.
     fn activate(&self, token: String) {
-        if token.is_empty() { self.settings.open() } else { self.settings.activate(token) }
+        crate::modules::open(&self.settings, None, Some(token));
+    }
+
+    /// Show the window on a section (`notifications`, `sound`, `bluetooth`).
+    fn open(&self, section: String, token: String) {
+        crate::modules::open(&self.settings, crate::settings::Section::from_word(&section), Some(token));
     }
 }
 
@@ -408,8 +413,14 @@ pub fn serve(
 
 /// Asks the running Hokum to show its settings window (D-Bus activation starts one if
 /// nothing owns the name). False when no Hokum answered.
-pub fn forward(token: &str) -> bool {
+pub fn forward(token: &str, section: Option<crate::settings::Section>) -> bool {
     let Ok(conn) = Connection::session() else { return false };
+    if let Some(s) = section
+        && conn.call_method(Some(NAME), SETTINGS_PATH, Some(SETTINGS_IFACE), "Open", &(s.word(), token)).is_ok()
+    {
+        return true;
+    }
+    // A Hokum from before sections only has Activate.
     conn.call_method(Some(NAME), SETTINGS_PATH, Some(SETTINGS_IFACE), "Activate", &(token,)).is_ok()
 }
 
