@@ -563,7 +563,9 @@ mod tests {
 
     #[test]
     fn modules_are_on_unless_the_config_says_otherwise() {
-        assert_eq!(load_src(DEFAULT).modules, crate::theme::Modules { sound: true, bluetooth: true });
+        assert_eq!(load_src(DEFAULT).modules, crate::theme::Modules::default());
+        let m = load_src("modules { osd #false; bluetooth-notifications #false }\n").modules;
+        assert!(m.sound && m.bluetooth && !m.osd && !m.bluetooth_notifications);
         let mut e = edit("theme \"soft\"\n");
         e.set_module("bluetooth", false);
         assert!(e.text().contains("modules {\n    bluetooth #false\n}"), "{}", e.text());

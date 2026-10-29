@@ -152,7 +152,7 @@ impl Ui {
         if let Some(cache) = &self.cache {
             n.decode(cache);
         }
-        if self.settings.do_not_disturb && n.urgency < 2 && !routing.interrupt {
+        if self.settings.do_not_disturb && n.urgency < 2 && !routing.interrupt && !n.hud {
             let _ = self.out.send(Out::Closed(n.id, Reason::Expired));
             return;
         }
@@ -481,6 +481,18 @@ fn update(s: &mut Ui) {
     s.upsert(decoded(crate::update::sample()));
 }
 
+/// The volume card, as a change from outside Hokum shows it.
+fn osd(s: &mut Ui) {
+    s.upsert(decoded(crate::integrations::samples().remove(0)));
+}
+
+/// A Bluetooth headset connecting, and a mouse running low.
+fn bt_connected(s: &mut Ui) {
+    for n in crate::integrations::samples().into_iter().skip(1).rev() {
+        s.upsert(decoded(n));
+    }
+}
+
 /// Scenes for the bundled themes.
 fn bundled(s: &mut Ui, id: &str) {
     if let Ok(t) = crate::theme::resolve(id) {
@@ -523,6 +535,8 @@ pub fn headless() {
             ("overflow", overflow),
             ("welcome", welcome),
             ("update", update),
+            ("osd", osd),
+            ("bt-connected", bt_connected),
             ("soft", |s| bundled(s, "soft")),
             ("crisp", |s| bundled(s, "crisp")),
             ("capsule", |s| bundled(s, "capsule")),

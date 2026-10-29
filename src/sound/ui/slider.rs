@@ -1,4 +1,4 @@
-//! The volume slider: a thin track whose fill glows with the live level, a knob, cubic
+//! The volume slider: a thin track filled to the knob with the live level as a sheen inside the fill, a knob, cubic
 //! volume from the model. 0–100 % fills the track; dragging past its end overdrives to 150 %,
 //! after which the track rescales with a tick at 100 %. Balance uses the same track, centred.
 
@@ -73,9 +73,10 @@ impl Shadows for El {
 pub fn volume(k: &Kit, target: Target, value: f32, scale: f32, level: Option<f32>, muted: bool, dragging: bool) -> El {
     let c = &k.c;
     let frac = (value / scale).clamp(0.0, 1.0);
-    let fill = if muted { c.border_strong } else { c.icon_faint };
+    // The fill always reaches the knob; the live level is a sheen inside it, never past it.
+    let fill = if muted { c.border_strong } else { c.icon_muted };
     let mut parts = vec![el().key("fill").w_frac(frac).h_full().radius(TRACK / 2.0).fill(fill)];
-    if let Some(l) = level.filter(|_| !muted) {
+    if let Some(l) = level.filter(|_| !muted && frac > 0.0) {
         parts.push(
             el().key("level")
                 .absolute(0.0, 0.0)
@@ -83,6 +84,7 @@ pub fn volume(k: &Kit, target: Target, value: f32, scale: f32, level: Option<f32
                 .h_full()
                 .radius(TRACK / 2.0)
                 .fill(c.text_base)
+                .opacity(0.55)
                 .motion(Spring::new(0.12, 0.0)),
         );
     }

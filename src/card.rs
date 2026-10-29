@@ -58,6 +58,8 @@ pub struct Note {
     pub deadline: Option<Instant>,
     /// Time left while timers are paused.
     pub left: Option<Duration>,
+    /// Hokum's own feedback (the volume card): shown through Do not disturb.
+    pub hud: bool,
 }
 
 impl Note {
@@ -87,6 +89,7 @@ impl Note {
             image: None,
             deadline: None,
             left: None,
+            hud: false,
         }
     }
 

@@ -3,7 +3,7 @@
 use rune::{Color, Cursor, El, Transition, Tx, col, el, icon, row, text};
 use rune_kit::{IconButton, IconButtonVariant, Kit, Select, SegmentedControl};
 
-use super::{Host, Mode, Page, Row, Tab, Ui, glyphs, slider};
+use super::{Host, Mode, Row, Ui, glyphs, slider};
 use crate::sound::model::{Availability, Command, Connection, Device, DeviceKind, ProfileKind, Stream, StreamKind, Target};
 
 /// The leading column (mute button, app icon): the slider starts after it.
@@ -398,17 +398,7 @@ pub fn main(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> El {
     if !apps.is_empty() {
         body = body.child(col().key("apps").w_full().gap(4.0).child(el().key("rule").h(1.0).mb(10.0).fill(c.border_muted)).children(apps));
     }
-    let corner = IconButton::new(&glyphs::TUNE)
-        .variant(IconButtonVariant::GhostMuted)
-        .label("Advanced")
-        .shortcut("Ctrl+,")
-        .on_press_tx(|h: &mut Host, tx: &mut Tx| {
-            tx.instant();
-            h.sound.page = Page::Advanced(Tab::Devices);
-        })
-        .build(k)
-        .key("advanced");
-    body.child(row().key("corner").w_full().mt(-8.0).mr(-8.0).justify_end().child(corner.opacity(0.7)))
+    body
 }
 
 /// Whether the panel shows the input: something's recording, or it's muted.

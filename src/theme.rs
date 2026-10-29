@@ -512,17 +512,21 @@ impl Behave {
     }
 }
 
-/// The control center's parts beside notifications: `modules { sound #true; bluetooth #true }`.
-/// Both are on unless the config turns them off; themes don't set them.
+/// The control center's parts beside notifications: `modules { sound #true; bluetooth #true }`,
+/// and the cards they show (`osd`: the volume card when the output changes;
+/// `bluetooth-notifications`: devices connecting and running low). All on unless the config
+/// turns them off; themes don't set them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Modules {
     pub sound: bool,
     pub bluetooth: bool,
+    pub osd: bool,
+    pub bluetooth_notifications: bool,
 }
 
 impl Default for Modules {
     fn default() -> Self {
-        Modules { sound: true, bluetooth: true }
+        Modules { sound: true, bluetooth: true, osd: true, bluetooth_notifications: true }
     }
 }
 
@@ -922,7 +926,9 @@ impl Parser<'_> {
             match node.name().value() {
                 "sound" => m.sound = on,
                 "bluetooth" => m.bluetooth = on,
-                other => self.problem(node, format!("unknown module `{other}`; use sound, bluetooth")),
+                "osd" => m.osd = on,
+                "bluetooth-notifications" => m.bluetooth_notifications = on,
+                other => self.problem(node, format!("unknown module `{other}`; use sound, bluetooth, osd, bluetooth-notifications")),
             }
         }
         m

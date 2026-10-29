@@ -23,8 +23,6 @@ use crate::watch::Config;
 
 const NAV: f32 = 200.0;
 const CONTENT: f32 = 560.0;
-/// Sound's and Bluetooth's column.
-const MODULE: f32 = 520.0;
 pub const SIZE: (f32, f32) = (1260.0, 780.0);
 
 /// Whether this process answers `org.freedesktop.Notifications`.
@@ -893,8 +891,8 @@ fn quiet(k: &Kit, glyph: &'static rune::Icon, line: Option<String>) -> El {
         .children(line.map(|l| text(l).key("line").font(k.ty.small).color(k.c.text_faint).wrap()))
 }
 
-/// Sound or Bluetooth: the title and the module's switch, then the module's own screens,
-/// centred in the space beside the sidebar.
+/// Sound or Bluetooth: the title and the module's first screen in Notifications' column, its
+/// advanced page in the pane beside it.
 fn module(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> El {
     let c = &k.c;
     let (section, title, on, error, glyph) = match s.section {
@@ -910,7 +908,7 @@ fn module(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> El {
         .gap(8.0)
         .child(row().key("title-row").w_full().h(28.0).center_y().child(page_title(k, title)))
         .children(problems(s, k));
-    // Turning a module off is rare: it sits at the end of its advanced page.
+    // Turning a module off is rare: it sits at the end of its advanced pane.
     let toggle = |label: String, variant: ButtonVariant| {
         Button::new(label)
             .variant(variant)
@@ -919,40 +917,48 @@ fn module(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> El {
             .build(k)
             .key("module-toggle")
     };
-    let advanced = match section {
-        Section::Bluetooth => s.bluetooth.page != crate::bluetooth::ui::Page::Main,
-        _ => s.sound.page != crate::sound::ui::Page::Main,
-    };
+    let running = on && error.is_none();
     let body = match (on, error) {
         (false, _) => quiet(k, glyph, None).child(toggle(format!("Turn on {title}"), ButtonVariant::Neutral)),
         (true, Some(e)) => quiet(k, glyph, Some(e.clone())),
-        (true, None) => {
-            let body = match section {
-                Section::Bluetooth => crate::bluetooth::ui::section(&s.bluetooth, k, layer),
-                _ => crate::sound::ui::section(&s.sound, k, layer),
-            };
-            let off = advanced.then(|| row().key("module-off").w_full().px(12.0).child(toggle(format!("Turn off {title}"), ButtonVariant::GhostMuted)));
-            col().key("module-body").w_full().child(body).children(off)
-        }
+        (true, None) => match section {
+            Section::Bluetooth => crate::bluetooth::ui::section(&s.bluetooth, k, layer),
+            _ => crate::sound::ui::section(&s.sound, k, layer),
+        },
     };
-    let column = col().key(format!("module-{}", section.word())).w(MODULE).pb(32.0).child(body);
-    col()
+    // The module's own padding makes up the rest of the 24 points Notifications' pages have.
+    let inset = if section == Section::Bluetooth { 12.0 } else { 6.0 };
+    let page = col().key(format!("module-{}", section.word())).w_full().px(inset).pt(8.0).pb(32.0).child(body);
+    let content = col()
         .key("content")
-        .grow(1.0)
+        .w(CONTENT)
         .h_full()
         .fill(c.page)
-        .child(row().key("header-row").w_full().justify_center().child(header.w(MODULE + 12.0)))
-        .child(row().key("rule-row").w_full().justify_center().child(el().key("rule").w(MODULE + 12.0).h(1.0).fill(c.border_muted)))
-        .child(
+        .child(header)
+        .child(el().key("rule").w_full().h(1.0).fill(c.border_muted))
+        .child(col().key(format!("scroll-{}", section.word())).w_full().grow(1.0).h(0.0).scroll(ScrollSpec { stick_bottom: false }).clip_fade(0.0, 0.0, 0.0, 16.0).child(page));
+    // Beside it, where Notifications has its preview: the module's advanced page.
+    let mut side = col().key("side").grow(1.0).h_full().fill(c.bg_deep);
+    if running {
+        let advanced = match section {
+            Section::Bluetooth => crate::bluetooth::ui::advanced(&s.bluetooth, k, layer),
+            _ => crate::sound::ui::advanced(&s.sound, k, layer),
+        };
+        let off = row().key("module-off").w_full().px(12.0).pb(24.0).child(toggle(format!("Turn off {title}"), ButtonVariant::GhostMuted));
+        side = side.child(
             col()
-                .key(format!("scroll-{}", section.word()))
+                .key(format!("side-scroll-{}", section.word()))
                 .w_full()
                 .grow(1.0)
                 .h(0.0)
+                .pt(8.0)
                 .scroll(ScrollSpec { stick_bottom: false })
                 .clip_fade(0.0, 0.0, 0.0, 16.0)
-                .child(row().key("centre").w_full().pt(8.0).justify_center().child(column)),
-        )
+                .child(advanced)
+                .child(off),
+        );
+    }
+    row().key("module").grow(1.0).h_full().child(content).child(side)
 }
 
 fn preview(s: &Ui, k: &Kit, window: &Kit) -> El {
@@ -1122,6 +1128,26 @@ fn scene_sound_advanced(s: &mut Ui) {
     crate::sound::ui::scenes::advanced(&mut s.sound);
 }
 
+fn scene_sound_input(s: &mut Ui) {
+    scene_sound(s);
+    crate::sound::ui::scenes::input(&mut s.sound);
+}
+
+fn scene_sound_routing(s: &mut Ui) {
+    scene_sound(s);
+    crate::sound::ui::scenes::routing(&mut s.sound);
+}
+
+fn scene_sound_clock(s: &mut Ui) {
+    scene_sound(s);
+    crate::sound::ui::scenes::clock(&mut s.sound);
+}
+
+fn scene_sound_issue(s: &mut Ui) {
+    scene_sound(s);
+    crate::sound::ui::scenes::issue(&mut s.sound);
+}
+
 fn scene_sound_lost(s: &mut Ui) {
     scene_sound(s);
     crate::sound::ui::scenes::lost(&mut s.sound);
@@ -1152,6 +1178,26 @@ fn scene_bluetooth_advanced(s: &mut Ui) {
     crate::bluetooth::ui::scenes::advanced(&mut s.bluetooth);
 }
 
+fn scene_bluetooth_scan(s: &mut Ui) {
+    scene_bluetooth(s);
+    crate::bluetooth::ui::scenes::scan(&mut s.bluetooth);
+}
+
+fn scene_bluetooth_typing(s: &mut Ui) {
+    scene_bluetooth(s);
+    crate::bluetooth::ui::scenes::typing(&mut s.bluetooth);
+}
+
+fn scene_bluetooth_pending(s: &mut Ui) {
+    scene_bluetooth(s);
+    crate::bluetooth::ui::scenes::pending(&mut s.bluetooth);
+}
+
+fn scene_bluetooth_devices(s: &mut Ui) {
+    scene_bluetooth(s);
+    crate::bluetooth::ui::scenes::devices(&mut s.bluetooth);
+}
+
 fn scene_bluetooth_off(s: &mut Ui) {
     scene_bluetooth(s);
     crate::bluetooth::ui::scenes::off(&mut s.bluetooth);
@@ -1176,7 +1222,7 @@ pub fn on_key(s: &mut Ui, e: &KeyEvent, tx: &mut Tx) -> bool {
         if e.key != rune::Key::Escape {
             return false;
         }
-        if s.sound.escape(tx) || s.bluetooth.escape(tx) {
+        if s.sound.escape() || s.bluetooth.escape() {
             return true;
         }
         if let Some(d) = &s.dismiss {
@@ -1207,12 +1253,20 @@ pub fn spec() -> AppSpec<Ui> {
             ("sound", scene_sound),
             ("sound-expanded", scene_sound_expanded),
             ("sound-advanced", scene_sound_advanced),
+            ("sound-input", scene_sound_input),
+            ("sound-routing", scene_sound_routing),
+            ("sound-clock", scene_sound_clock),
+            ("sound-issue", scene_sound_issue),
             ("sound-lost", scene_sound_lost),
             ("sound-off", scene_sound_off),
             ("bluetooth", scene_bluetooth),
             ("bluetooth-expanded", scene_bluetooth_expanded),
             ("bluetooth-pairing", scene_bluetooth_pairing),
             ("bluetooth-advanced", scene_bluetooth_advanced),
+            ("bluetooth-scan", scene_bluetooth_scan),
+            ("bluetooth-typing", scene_bluetooth_typing),
+            ("bluetooth-pending", scene_bluetooth_pending),
+            ("bluetooth-devices", scene_bluetooth_devices),
             ("bluetooth-off", scene_bluetooth_off),
             ("panel", scene_panel),
         ],
@@ -1269,4 +1323,15 @@ mod tests {
         press(&mut rt, "nav-notifications");
         shown_at_once(&rt, "page-apps");
     }
+
+    #[test]
+    fn an_audio_device_links_to_sound() {
+        let mut ui = init();
+        scene_bluetooth_expanded(&mut ui);
+        let mut rt = rune::Runtime::new(ui, view, SIZE, rune::Env::default());
+        rt.frame(0.0);
+        press(&mut rt, "panel/sound");
+        assert!(rt.find("module-sound").is_some(), "the Sound section shows");
+    }
+
 }

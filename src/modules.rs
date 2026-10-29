@@ -6,6 +6,7 @@
 //! quiet line in its section (and nothing in the panel); notifications never notice.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+// Volume and Bluetooth cards come from `crate::integrations`.
 use std::sync::{Arc, Mutex};
 
 use rune::{AppHandle, OverlayHandle, Tray, TrayEvent, TrayIcon, TrayItem, TraySpec};
@@ -23,6 +24,12 @@ struct Tip {
 pub struct Wiring {
     window: AppHandle<Ui>,
     panel: OverlayHandle<Ui>,
+    cards: OverlayHandle<crate::cards::Ui>,
+    osd: Mutex<crate::integrations::Osd>,
+    devices: Mutex<crate::integrations::Devices>,
+    /// `modules { osd; bluetooth-notifications }`.
+    show_osd: AtomicBool,
+    show_devices: AtomicBool,
     /// Whether the panel is showing.
     shown: Arc<AtomicBool>,
     tray: Mutex<Option<(Arc<Tray>, bool, bool)>>,
@@ -47,8 +54,16 @@ pub fn open(window: &AppHandle<Ui>, section: Option<Section>, token: Option<Stri
 }
 
 impl Wiring {
-    pub fn new(window: AppHandle<Ui>, panel: OverlayHandle<Ui>) -> Arc<Wiring> {
-        let w = Arc::new(Wiring { window, panel, shown: Arc::new(AtomicBool::new(false)), tray: Mutex::new(None), tip: Arc::new(Mutex::new(Tip::default())) });
+    pub fn new(window: AppHandle<Ui>, panel: OverlayHandle<Ui>, cards: OverlayHandle<crate::cards::Ui>) -> Arc<Wiring> {
+        let w = Arc::new(Wiring {
+            window,
+            panel,
+            cards,
+            osd: Mutex::default(),
+            devices: Mutex::default(),
+            show_osd: AtomicBool::new(true),
+            show_devices: AtomicBool::new(true),
+            shown: Arc::new(AtomicBool::new(false)), tray: Mutex::new(None), tip: Arc::new(Mutex::new(Tip::default())) });
         let hide = w.hider();
         w.panel.update(move |p, _| p.dismiss = Some(hide));
         w
@@ -83,6 +98,8 @@ impl Wiring {
     /// A new config: modules on or off, the tray's menu, and the panel's copy of it.
     pub fn configure(self: &Arc<Self>, ui: &mut Ui, config: &Config) {
         let m = config.loaded.modules;
+        self.show_osd.store(m.osd, Ordering::Relaxed);
+        self.show_devices.store(m.bluetooth_notifications, Ordering::Relaxed);
         let sound_on = ui.sound.handle.is_some() || ui.sound_error.is_some();
         if m.sound && !sound_on {
             self.start_sound(ui);
@@ -122,6 +139,10 @@ impl Wiring {
             let (window, panel, me) = (self.window.clone(), self.panel.clone(), self.clone());
             audio.on_change(move |s| {
                 me.set_tip(|t| t.sound = sound_tip(s));
+                let card = me.osd.lock().unwrap_or_else(|e| e.into_inner()).see(s, crate::sound::ui::touched_recently());
+                if let Some(n) = card.filter(|_| me.show_osd.load(Ordering::Relaxed)) {
+                    me.cards.update(move |c, _| c.upsert(n));
+                }
                 let (a, b) = (s.clone(), s.clone());
                 window.update(move |w, _| w.sound.receive(a));
                 panel.update(move |p, _| p.sound.receive(b));
@@ -147,6 +168,12 @@ impl Wiring {
             let (window, panel, me) = (self.window.clone(), self.panel.clone(), self.clone());
             bt.on_change(move |s| {
                 me.set_tip(|t| t.bluetooth = bluetooth_tip(s));
+                let cards = me.devices.lock().unwrap_or_else(|e| e.into_inner()).see(s);
+                if me.show_devices.load(Ordering::Relaxed) {
+                    for n in cards {
+                        me.cards.update(move |c, _| c.upsert(n));
+                    }
+                }
                 let (a, b) = (s.clone(), s.clone());
                 window.update(move |w, _| w.bluetooth.receive(a));
                 panel.update(move |p, _| p.bluetooth.receive(b));

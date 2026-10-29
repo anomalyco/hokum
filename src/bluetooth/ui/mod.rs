@@ -229,13 +229,8 @@ impl Ui {
     }
 
     /// Esc: close what's open, one layer at a time.
-    pub fn escape(&mut self, tx: &mut Tx) -> bool {
+    pub fn escape(&mut self) -> bool {
         if self.menu.take().is_some() || self.alias.take().is_some() {
-            return true;
-        }
-        if let Page::Advanced(_) = self.page {
-            tx.instant();
-            self.page = Page::Main;
             return true;
         }
         if self.adding {
@@ -249,12 +244,19 @@ impl Ui {
     }
 }
 
-/// The section: the first screen with its rows, or the advanced page. Select menus go to `layer`.
-pub fn section(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> El {
-    match s.page {
-        Page::Main => view::main(s, k),
-        Page::Advanced(tab) => advanced::page(s, k, tab, layer),
-    }
+/// The section's first screen with its rows. Select menus go to `layer`.
+pub fn section(s: &Ui, k: &Kit, _layer: &mut Vec<El>) -> El {
+    
+    view::main(s, k)
+}
+
+/// The advanced page, beside the first screen in the window.
+pub fn advanced(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> El {
+    let tab = match s.page {
+        Page::Advanced(t) => t,
+        Page::Main => Tab::Adapter,
+    };
+    advanced::page(s, k, tab, layer)
 }
 
 /// The tray panel's rows: connected devices, then paired ones to connect.
@@ -267,16 +269,11 @@ pub fn ready(s: &Ui) -> bool {
     s.bt.connection == crate::bluetooth::model::Connection::Ready && !s.bt.adapters.is_empty()
 }
 
-/// Keys for the section: Esc, Ctrl+, (advanced).
-pub fn on_key(s: &mut Ui, e: &rune::KeyEvent, tx: &mut Tx) -> bool {
+/// Keys for the section: Esc.
+pub fn on_key(s: &mut Ui, e: &rune::KeyEvent, _tx: &mut Tx) -> bool {
     use rune::Key;
     match &e.key {
-        Key::Escape => s.escape(tx),
-        Key::Command(',') if s.mode == Mode::Window => {
-            tx.instant();
-            s.page = if s.page == Page::Main { Page::Advanced(Tab::Adapter) } else { Page::Main };
-            true
-        }
+        Key::Escape => s.escape(),
         _ => false,
     }
 }
@@ -300,6 +297,43 @@ pub mod scenes {
     pub fn pairing(s: &mut Ui) {
         s.bt = Arc::new(crate::bluetooth::mock::pairing());
         s.adding = true;
+    }
+
+    pub fn scan(s: &mut Ui) {
+        s.bt = Arc::new(crate::bluetooth::mock::scanning());
+        s.adding = true;
+    }
+
+    /// A keyboard asking for its passkey to be typed on it, three digits in.
+    pub fn typing(s: &mut Ui) {
+        let mut st = crate::bluetooth::mock::scanning();
+        let kb = st.nearby().find(|d| d.kind == crate::bluetooth::model::Kind::Keyboard).map(|d| d.id.clone());
+        if let Some(kb) = kb {
+            if let Some(d) = st.devices.iter_mut().find(|d| d.id == kb) {
+                d.pending = Some(Pending::Pairing);
+            }
+            st.pairing = Some(crate::bluetooth::model::PairingRequest { id: 2, device: kb, kind: PairingKind::DisplayPasskey { passkey: 205117, entered: 3 } });
+        }
+        s.bt = Arc::new(st);
+        s.adding = true;
+    }
+
+    /// Connecting to a speaker, and a failed connect's issue.
+    pub fn pending(s: &mut Ui) {
+        let mut st = crate::bluetooth::mock::sample();
+        if let Some(d) = st.devices.iter_mut().find(|d| d.is_paired() && !d.connected) {
+            d.pending = Some(Pending::Connecting);
+        }
+        st.issues.push(crate::bluetooth::model::Issue { id: 9, severity: crate::bluetooth::model::Severity::Error, message: "Couldn't connect to JBL Flip 6".into(), device: None });
+        s.bt = Arc::new(st);
+    }
+
+    /// The advanced Devices tab with the mouse's details open.
+    pub fn devices(s: &mut Ui) {
+        main(s);
+        s.page = Page::Advanced(Tab::Devices);
+        let id = s.bt.devices().find(|d| d.kind == crate::bluetooth::model::Kind::Mouse).map(|d| d.id.clone());
+        s.details.extend(id);
     }
 
     pub fn advanced(s: &mut Ui) {

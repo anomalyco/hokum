@@ -4,7 +4,7 @@
 use rune::{Color, Cursor, El, TextStyle, Transition, Tx, col, el, icon, row, text};
 use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit, Spinner, Switch, TextInput};
 
-use super::{Host, Mode, Page, Tab, Ui, glyphs};
+use super::{Host, Mode, Ui, glyphs};
 use crate::bluetooth::model::{Command, Connection, Device, PairingKind, PairingRequest, Pending, PowerState, Severity};
 
 /// The device mark's diameter; text starts after it.
@@ -453,17 +453,7 @@ pub fn main(s: &Ui, k: &Kit) -> El {
             .build(k)
             .key("add")
     });
-    let corner = IconButton::new(&glyphs::TUNE)
-        .variant(IconButtonVariant::GhostMuted)
-        .label("Advanced")
-        .shortcut("Ctrl+,")
-        .on_press_tx(|h: &mut Host, tx: &mut Tx| {
-            tx.instant();
-            h.bluetooth.page = Page::Advanced(Tab::Adapter);
-        })
-        .build(k)
-        .key("advanced");
-    body.child(row().key("corner").w_full().mt(2.0).pl(2.0).center_y().children(add).child(el().key("fill").grow(1.0)).child(corner.opacity(0.7)))
+    body.child(row().key("corner").w_full().mt(2.0).pl(2.0).center_y().children(add))
 }
 
 /// The tray panel's rows: connected devices (a click disconnects), then paired ones (a click

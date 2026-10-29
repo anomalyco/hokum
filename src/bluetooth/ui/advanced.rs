@@ -2,7 +2,7 @@
 //! properties.
 
 use rune::{Cursor, El, TextEdit, Tx, col, el, icon, row, text};
-use rune_kit::{IconButton, IconButtonVariant, Kit, SegmentedControl, Select, Switch, TextInput};
+use rune_kit::{Kit, SegmentedControl, Select, Switch, TextInput};
 
 use super::{Host, Page, Tab, Ui, glyphs};
 use crate::bluetooth::model::{Adapter, AddressType, Bearer, Command, Device};
@@ -326,20 +326,6 @@ pub fn page(s: &Ui, k: &Kit, tab: Tab, layer: &mut Vec<El>) -> El {
         .w_full()
         .gap(8.0)
         .center_y()
-        .child(
-            IconButton::new(&glyphs::BACK)
-                .variant(IconButtonVariant::Ghost)
-                .label("Back")
-                .on_press_tx(|h: &mut Host, tx: &mut Tx| {
-                    let s = &mut h.bluetooth;
-                    tx.instant();
-                    s.page = Page::Main;
-                    s.menu = None;
-                    s.alias = None;
-                })
-                .build(k)
-                .key("back"),
-        )
         .child(
             SegmentedControl::new(&labels, current)
                 .width(None)

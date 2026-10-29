@@ -30,9 +30,7 @@ glyph!(PLAYER, "player", r#"<rect x="3.5" y="1.5" width="9" height="13" rx="1.8"
 glyph!(NETWORK, "network", r#"<path d="M2 6.5a8.5 8.5 0 0 1 12 0M4.2 9a5.3 5.3 0 0 1 7.6 0" stroke="currentColor" stroke-linecap="round"/><circle cx="8" cy="12" r="1" fill="currentColor"/>"#);
 
 glyph!(CHEVRON, "chevron", r#"<path d="M4.5 6.5L8 10l3.5-3.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>"#);
-glyph!(BACK, "back", r#"<path d="M9.5 4L5.5 8l4 4" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>"#);
 glyph!(CHECK, "check", r#"<path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>"#);
-glyph!(TUNE, "tune", r#"<path d="M3 4.5h6M12 4.5h1M3 11.5h1M7 11.5h6" stroke="currentColor" stroke-linecap="round"/><circle cx="10.5" cy="4.5" r="1.5" stroke="currentColor"/><circle cx="5.5" cy="11.5" r="1.5" stroke="currentColor"/>"#);
 glyph!(PLUS, "plus", r#"<path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-linecap="round"/>"#);
 glyph!(CLOSE, "close", r#"<path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" stroke-linecap="round"/>"#);
 glyph!(WARNING, "warning", r#"<path d="M8 2.5l6 10.5H2Z" stroke="currentColor" stroke-linejoin="round"/><path d="M8 6.5v3" stroke="currentColor" stroke-linecap="round"/><circle cx="8" cy="11.2" r=".7" fill="currentColor"/>"#);

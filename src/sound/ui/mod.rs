@@ -26,6 +26,14 @@ use rune_kit::Kit;
 use crate::sound::model::{Audio, Command, Id, MAX_VOLUME, State, StreamKind, Subscription, Target};
 use slider::Slide;
 
+/// When Hokum itself last changed a volume, mute or default device.
+static TOUCHED: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+
+/// Whether Hokum changed the output a moment ago (the volume card stays away then).
+pub fn touched_recently() -> bool {
+    TOUCHED.lock().unwrap_or_else(|e| e.into_inner()).is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(1500))
+}
+
 /// The state every handler gets: the window's (or the tray panel's).
 pub type Host = crate::settings::Ui;
 
@@ -152,6 +160,9 @@ impl Ui {
     }
 
     pub fn send(&self, c: Command) {
+        if matches!(c, Command::SetVolume { .. } | Command::SetMute { .. } | Command::SetDefault { .. }) {
+            *TOUCHED.lock().unwrap_or_else(|e| e.into_inner()) = Some(std::time::Instant::now());
+        }
         if let Some(a) = &self.handle {
             a.send(c);
         }
@@ -279,7 +290,7 @@ impl Ui {
     /// What's on screen, for [`Meters`].
     fn metered(&self) -> HashSet<Target> {
         let mut out = HashSet::new();
-        if !self.visible || self.page != Page::Main {
+        if !self.visible {
             return out;
         }
         let a = &self.audio;
@@ -335,13 +346,8 @@ impl Ui {
     }
 
     /// Esc: close what's open, one layer at a time.
-    pub fn escape(&mut self, tx: &mut Tx) -> bool {
+    pub fn escape(&mut self) -> bool {
         if self.menu.take().is_some() || self.naming.take().is_some() || self.route_from.take().is_some() {
-            return true;
-        }
-        if let Page::Advanced(_) = self.page {
-            tx.instant();
-            self.page = Page::Main;
             return true;
         }
         if !self.open.is_empty() {
@@ -352,13 +358,19 @@ impl Ui {
     }
 }
 
-/// The section: the first screen with its rows, or the advanced page. Select menus go to `layer`.
+/// The section's first screen with its rows. Select menus go to `layer`.
 pub fn section(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> El {
     s.sync_meters();
-    match s.page {
-        Page::Main => view::main(s, k, layer),
-        Page::Advanced(tab) => advanced::page(s, k, tab, layer),
-    }
+    view::main(s, k, layer)
+}
+
+/// The advanced page, beside the first screen in the window.
+pub fn advanced(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> El {
+    let tab = match s.page {
+        Page::Advanced(t) => t,
+        Page::Main => Tab::Devices,
+    };
+    advanced::page(s, k, tab, layer)
 }
 
 /// The tray panel's rows: output, and input when something's recording or it's muted.
@@ -367,20 +379,15 @@ pub fn panel(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> Vec<El> {
     view::tray_rows(s, k, layer)
 }
 
-/// Keys for the section: Esc, M (mute the output), Ctrl+, (advanced).
-pub fn on_key(s: &mut Ui, e: &rune::KeyEvent, tx: &mut Tx) -> bool {
+/// Keys for the section: Esc, M (mute the output).
+pub fn on_key(s: &mut Ui, e: &rune::KeyEvent, _tx: &mut Tx) -> bool {
     use rune::Key;
     match &e.key {
-        Key::Escape => s.escape(tx),
-        Key::Text(t) if t.eq_ignore_ascii_case("m") && !e.mods.cmd && s.page == Page::Main => {
+        Key::Escape => s.escape(),
+        Key::Text(t) if t.eq_ignore_ascii_case("m") && !e.mods.cmd && s.naming.is_none() => {
             if let Some(id) = s.audio.default_sink {
                 s.toggle_mute(Target::Device(id));
             }
-            true
-        }
-        Key::Command(',') if s.mode == Mode::Window => {
-            tx.instant();
-            s.page = if s.page == Page::Main { Page::Advanced(Tab::Devices) } else { Page::Main };
             true
         }
         _ => false,
@@ -427,6 +434,28 @@ pub mod scenes {
     pub fn advanced(s: &mut Ui) {
         main(s);
         s.page = Page::Advanced(Tab::Devices);
+    }
+
+    pub fn input(s: &mut Ui) {
+        main(s);
+        s.open.insert(Row::Input);
+    }
+
+    pub fn routing(s: &mut Ui) {
+        main(s);
+        s.page = Page::Advanced(Tab::Routing);
+    }
+
+    pub fn clock(s: &mut Ui) {
+        main(s);
+        s.page = Page::Advanced(Tab::Clock);
+    }
+
+    pub fn issue(s: &mut Ui) {
+        let mut a = crate::sound::mock::sample();
+        a.issues.push(crate::sound::model::Issue { severity: crate::sound::model::Severity::Warning, message: "Couldn't switch to LDAC".into() });
+        s.audio = Arc::new(a);
+        decode_now(s);
     }
 
     pub fn lost(s: &mut Ui) {

@@ -32,6 +32,7 @@ mod card;
 mod cards;
 mod config;
 mod icons;
+mod integrations;
 mod modules;
 mod panel;
 mod script;
@@ -151,7 +152,7 @@ fn run(open: bool, replace: bool, section: Option<settings::Section>) {
     let overlay = app.overlay(cards::overlay(&config), cards::Ui::new(config.clone(), out_tx, timer_tx));
     let window = app.handle();
     let panel = app.overlay(panel::overlay(), panel::state(window.clone()));
-    let wiring = modules::Wiring::new(window.clone(), panel);
+    let wiring = modules::Wiring::new(window.clone(), panel, overlay.clone());
     cards::timers(timer_rx, overlay.clone());
     watch::spawn(overlay.clone(), window.clone());
     {

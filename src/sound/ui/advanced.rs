@@ -282,19 +282,6 @@ pub fn page(s: &Ui, k: &Kit, tab: Tab, layer: &mut Vec<El>) -> El {
         .gap(8.0)
         .center_y()
         .child(
-            IconButton::new(&glyphs::BACK)
-                .variant(IconButtonVariant::Ghost)
-                .label("Back")
-                .on_press_tx(|h: &mut Host, tx: &mut Tx| {
-                    let s = &mut h.sound;
-                    tx.instant();
-                    s.page = Page::Main;
-                    s.menu = None;
-                })
-                .build(k)
-                .key("back"),
-        )
-        .child(
             SegmentedControl::new(&labels, current)
                 .width(None)
                 .on_pick(|h: &mut Host, i: usize, tx: &mut Tx| {
