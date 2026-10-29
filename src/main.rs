@@ -32,6 +32,7 @@ mod card;
 mod cards;
 mod config;
 mod desktop;
+mod glyph;
 mod icons;
 mod integrations;
 mod modules;

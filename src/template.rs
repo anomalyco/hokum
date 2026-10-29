@@ -200,7 +200,14 @@ fn letter(cx: &Ctx, size: f32, radius: f32) -> El {
         let font = TextStyle::new(glyph, 400.0)
             .lh(glyph)
             .family(Family::SystemMono);
-        return badge.child(text(g.clone()).font(font).color(Color::WHITE));
+        // A right margin of twice the shift moves the centred glyph left by the shift.
+        let shift = crate::glyph::ink_shift(g) * glyph;
+        return badge.child(
+            text(g.clone())
+                .font(font)
+                .color(Color::WHITE)
+                .mr(2.0 * shift),
+        );
     }
     let ch =
         cx.n.app

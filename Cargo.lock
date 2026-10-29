@@ -1160,6 +1160,7 @@ dependencies = [
  "rune-theme-opencode",
  "serde",
  "serde_json",
+ "skrifa",
  "ureq",
  "wayland-client",
  "zbus 5.19.0",

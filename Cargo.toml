@@ -21,6 +21,7 @@ kdl = "6"
 rhai = "1"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 wayland-client = "0.31"
+skrifa = "0.44"
 
 [profile.release]
 codegen-units = 16

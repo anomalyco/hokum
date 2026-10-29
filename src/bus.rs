@@ -243,6 +243,10 @@ impl Server {
         n.glyph = hint::<String>(&hints, "omarchy-glyph")
             .as_deref()
             .and_then(glyph);
+        // Measured here, off the UI thread, so the badge finds it cached.
+        if let Some(g) = &n.glyph {
+            crate::glyph::ink_shift(g);
+        }
         n.timeout = match expire_timeout {
             0 => Timeout::Never,
             t if t > 0 => Timeout::After(Duration::from_millis(t as u64)),

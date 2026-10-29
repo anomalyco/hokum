@@ -697,6 +697,25 @@ fn bt_connected(s: &mut Ui) {
     }
 }
 
+/// Omarchy's glyph badges (`omarchy-glyph`): Nerd Font icons, centred in the badge.
+fn glyphs(s: &mut Ui) {
+    let cards = [
+        (
+            11,
+            "Screenshot saved and copied",
+            "919 × 642 · 217.7 kB",
+            "\u{f030}",
+        ),
+        (12, "Screen recording saved", "00:42 · 8.1 MB", "\u{f0100}"),
+        (13, "Animations disabled", "", "\u{f16a1}"),
+    ];
+    for (id, summary, body, glyph) in cards.into_iter().rev() {
+        let mut n = Note::new(id, "Omarchy", summary, body);
+        n.glyph = Some(glyph.into());
+        s.upsert(n);
+    }
+}
+
 /// Scenes for the bundled themes.
 fn bundled(s: &mut Ui, id: &str) {
     if let Ok(t) = crate::theme::resolve(id) {
@@ -757,6 +776,7 @@ pub fn headless() {
         scenes: &[
             ("demo", demo),
             ("overflow", overflow),
+            ("glyphs", glyphs),
             ("welcome", welcome),
             ("update", update),
             ("osd", osd),
