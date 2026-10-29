@@ -36,6 +36,8 @@ fn fingerprint(base: &str) -> Vec<Option<SystemTime>> {
         stamp(&crate::script::path()),
         stamp(&crate::theme::dir()),
     ];
+    // Omarchy swaps its theme folder on a switch, which the bundled `omarchy` theme follows.
+    v.extend(crate::omarchy_theme::colors_path().map(|p| stamp(&p)));
     if let Some(crate::theme::Found::File(p)) = crate::theme::find(base) {
         v.push(stamp(&p));
     }

@@ -801,6 +801,7 @@ pub fn headless() {
             ("bubble", |s| bundled(s, "bubble")),
             ("signal", |s| bundled(s, "signal")),
             ("pill", |s| bundled(s, "pill")),
+            ("omarchy", |s| bundled(s, "omarchy")),
         ],
         fonts: rune_theme_opencode::FONTS,
         families: rune_theme_opencode::FAMILIES,
@@ -881,7 +882,7 @@ mod tests {
     #[test]
     fn surface_leaves_room_for_every_shadow() {
         for id in [
-            "soft", "crisp", "capsule", "ribbon", "terminal", "bubble", "signal", "pill",
+            "soft", "crisp", "capsule", "ribbon", "terminal", "bubble", "signal", "pill", "omarchy",
         ] {
             let theme = crate::theme::resolve(id).unwrap();
             let reach = crate::card::shadow_reach(&theme);

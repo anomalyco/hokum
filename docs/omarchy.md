@@ -57,6 +57,9 @@ icon. Glyphs are Nerd Font icons and draw in your `monospace` font, which Omarch
 
 ## Themes
 
-Hokum doesn't follow Omarchy's themes, only the desktop's light or dark preference. A Hokum
-theme can be written to match one, though: in Settings, copy the theme prompt for your coding
-agent and ask it to use the colours in `~/.local/state/omarchy/current/theme/colors.toml`.
+The built-in `omarchy` theme follows Omarchy's: `theme "omarchy"` in config.kdl, or pick it in
+Settings. It draws cards the way Omarchy's own notifications looked (square, monospace, a 2 point
+border in the Hyprland active-border colour, progress in the accent, urgent cards in red, no close
+button) in the colours of `~/.local/state/omarchy/current/theme/colors.toml`, and redraws when you
+switch themes. Set `appearance "system"` too, so Hokum turns light with a light Omarchy theme.
+Tweaks sit on top in config.kdl as usual, such as `tokens { motion 0 0 }` for no animation.

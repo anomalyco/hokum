@@ -38,8 +38,9 @@ the last config that worked. `hokum check` reports the same problems in a termin
 
 **Themes** use the same format. Built-in ones are fixed: [Soft](../themes/soft.kdl),
 [Crisp](../themes/crisp.kdl), [Capsule](../themes/capsule.kdl), [Ribbon](../themes/ribbon.kdl),
-[Terminal](../themes/terminal.kdl), [Bubble](../themes/bubble.kdl), [Signal](../themes/signal.kdl)
-and [Pill](../themes/pill.kdl). Referencing one keeps you on its latest version with your
+[Terminal](../themes/terminal.kdl), [Bubble](../themes/bubble.kdl), [Signal](../themes/signal.kdl),
+[Pill](../themes/pill.kdl) and [Omarchy](../themes/omarchy.kdl), whose colours follow the current Omarchy
+theme. Referencing one keeps you on its latest version with your
 overrides on top. Your own themes live in `~/.config/hokum/themes/`: `theme "ember"` refers to
 `themes/ember.kdl`, and any path works too (`theme "~/dotfiles/hokum/work.kdl"`). A theme can
 itself start from another theme. The settings window shows your themes beside the built-in ones,

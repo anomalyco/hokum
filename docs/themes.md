@@ -9,7 +9,7 @@ scratch and check it without a display.
 ## The short version
 
 1. Write `~/.config/hokum/themes/<id>.kdl` (KDL v2). Pick an `<id>` that isn't a built-in
-   theme's (`soft`, `crisp`, `capsule`, `ribbon`, `terminal`, `bubble`, `signal`, `pill`).
+   theme's (`soft`, `crisp`, `capsule`, `ribbon`, `terminal`, `bubble`, `signal`, `pill`, `omarchy`).
 2. Point the config at it: in `~/.config/hokum/config.kdl`, set `theme "<id>"` (change only
    that line; keep everything else in the file).
 3. Run `hokum check ~/.config/hokum/themes/<id>.kdl` until it says OK, then render it headlessly

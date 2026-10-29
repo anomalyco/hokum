@@ -1,0 +1,52 @@
+// Omarchy: follows the current Omarchy theme, the way Omarchy's own notifications looked.
+// Square cards in its monospace face, a 2 point border in the Hyprland active-border
+// colour, progress bars in the accent and urgent cards in red. The placeholders are
+// Omarchy's template syntax, filled from ~/.local/state/omarchy/current/theme/colors.toml
+// whenever Omarchy switches theme; without Omarchy, Tokyo Night (its default) stands in.
+// A right-click dismisses, so there's no close button.
+name "Omarchy"
+
+tokens {
+    width 380
+    radius 0
+    badge-radius 0
+    padding 12
+    gap 6
+    spacing 8
+    icon-size 20
+    font "mono"
+    font-size 12
+    title-weight 600
+    fill "{{ background }}"
+    text "{{ foreground }}"
+    muted "{{ mix foreground background 25% }}"
+    faint "{{ mix foreground background 50% }}"
+    border 2 "{{ gradient_start hyprland_active_border accent }}"
+    accent "{{ accent }}"
+    shadow "flat"
+    mark "icon"
+}
+
+template "card" {
+    row gap=8 align="center" {
+        badge
+        text "{source}" size=11 weight=550 color="muted" lines=1 grow=#true
+        text "{time}" size=11 color="faint"
+    }
+    row gap=10 {
+        col gap=2 grow=#true {
+            if "summary" { text "{summary}" weight="title" }
+            if "body" { text "{body}" color="muted" lines=8 }
+            if "value" { progress color="accent" }
+        }
+        if "image" { image width=44 height=44 radius=0 }
+    }
+    actions
+}
+
+rule urgency="critical" {
+    tokens {
+        border 2 "{{ red }}"
+        accent "{{ red }}"
+    }
+}

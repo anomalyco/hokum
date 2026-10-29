@@ -39,6 +39,7 @@ mod glyph;
 mod icons;
 mod integrations;
 mod modules;
+mod omarchy_theme;
 mod panel;
 mod script;
 mod sender;

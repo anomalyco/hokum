@@ -28,6 +28,10 @@ pub const BUNDLED: &[(&str, &str)] = &[
     ("bubble", include_str!("../themes/bubble.kdl")),
     ("signal", include_str!("../themes/signal.kdl")),
     ("pill", include_str!("../themes/pill.kdl")),
+    (
+        crate::omarchy_theme::ID,
+        include_str!("../themes/omarchy.kdl"),
+    ),
 ];
 
 /// A colour: a theme palette name (which follows light and dark), the sending app's tint, or
@@ -1640,6 +1644,9 @@ pub fn find(id: &str) -> Option<Found> {
 /// A theme's own source.
 pub fn source(id: &str) -> Option<String> {
     match find(id)? {
+        Found::Bundled(src) if id == crate::omarchy_theme::ID => {
+            Some(crate::omarchy_theme::render(src))
+        }
         Found::Bundled(src) => Some(src.to_owned()),
         Found::File(p) => std::fs::read_to_string(p).ok(),
     }
@@ -1700,7 +1707,12 @@ mod tests {
     fn every_bundled_theme_and_the_default_parse() {
         parse(DEFAULT, "default").unwrap();
         for (id, src) in BUNDLED {
-            if let Err(e) = parse(src, id) {
+            let src = if *id == crate::omarchy_theme::ID {
+                crate::omarchy_theme::fill(src, "")
+            } else {
+                src.to_string()
+            };
+            if let Err(e) = parse(&src, id) {
                 panic!(
                     "{id}: {}",
                     e.iter()
