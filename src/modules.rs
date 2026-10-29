@@ -215,13 +215,9 @@ impl Wiring {
             }
             return;
         }
-        let spec = TraySpec {
-            id: "hokum".into(),
-            title: "Hokum".into(),
-            tooltip: if tooltip.is_empty() { "Hokum".into() } else { tooltip },
-            icon: if m.sound { speaker(32) } else { rune_mark(32) },
-            menu: menu(dnd),
-        };
+        let spec = TraySpec::new("hokum", "Hokum", TrayIcon::rgba(32, 32, if m.sound { speaker(32) } else { rune_mark(32) }))
+            .tooltip(if tooltip.is_empty() { "Hokum".into() } else { tooltip })
+            .menu(menu(dnd));
         let me = Arc::downgrade(self);
         let window = self.window.clone();
         match Tray::new(spec, move |e| match e {
@@ -233,7 +229,7 @@ impl Wiring {
             TrayEvent::Menu(id) if id == "open" => open(&window, None, None),
             TrayEvent::Menu(id) if id == "dnd" => window.update(|w, _| w.toggle_dnd()),
             TrayEvent::Menu(id) if id == "quit" => window.quit(),
-            TrayEvent::Menu(_) => {}
+            _ => {}
         }) {
             Ok(t) => *slot = Some((Arc::new(t), m.sound, dnd)),
             Err(e) => {
@@ -274,8 +270,8 @@ fn bluetooth_tip(s: &crate::bluetooth::model::State) -> String {
         .join(" · ")
 }
 
-/// White on transparent, 4×4 supersampled.
-fn raster(size: u32, alpha: u32, inside: impl Fn(f32, f32) -> bool) -> TrayIcon {
+/// RGBA, white on transparent, 4×4 supersampled.
+fn raster(size: u32, alpha: u32, inside: impl Fn(f32, f32) -> bool) -> Vec<u8> {
     let s = size as f32 / 16.0;
     let mut rgba = Vec::with_capacity((size * size * 4) as usize);
     for py in 0..size {
@@ -291,11 +287,11 @@ fn raster(size: u32, alpha: u32, inside: impl Fn(f32, f32) -> bool) -> TrayIcon 
             rgba.extend_from_slice(&[255, 255, 255, (hits * alpha / 16) as u8]);
         }
     }
-    TrayIcon { width: size, height: size, rgba }
+    rgba
 }
 
 /// A speaker with two waves, on a 16-point grid.
-fn speaker(size: u32) -> TrayIcon {
+fn speaker(size: u32) -> Vec<u8> {
     let body = [[2.5, 6.0], [4.7, 6.0], [8.0, 3.2], [8.0, 12.8], [4.7, 10.0], [2.5, 10.0]];
     raster(size, 255, |x, y| {
         let mut odd = false;
@@ -317,7 +313,7 @@ fn speaker(size: u32) -> TrayIcon {
 }
 
 /// Bluetooth's rune, on a 16-point grid.
-fn rune_mark(size: u32) -> TrayIcon {
+fn rune_mark(size: u32) -> Vec<u8> {
     let pts = [[4.5, 5.0], [11.5, 11.0], [8.0, 14.0], [8.0, 2.0], [11.5, 5.0], [4.5, 11.0]];
     raster(size, 255, |x, y| {
         pts.windows(2).any(|w| {
@@ -337,8 +333,8 @@ mod tests {
     #[test]
     fn tray_icons_are_drawn() {
         for icon in [speaker(32), rune_mark(32)] {
-            assert_eq!(icon.rgba.len(), 32 * 32 * 4);
-            assert!(icon.rgba.chunks(4).any(|p| p[3] == 255) && icon.rgba.chunks(4).any(|p| p[3] == 0));
+            assert_eq!(icon.len(), 32 * 32 * 4);
+            assert!(icon.chunks(4).any(|p| p[3] == 255) && icon.chunks(4).any(|p| p[3] == 0));
         }
     }
 
