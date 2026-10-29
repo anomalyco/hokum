@@ -73,8 +73,9 @@ impl Shadows for El {
 pub fn volume(k: &Kit, target: Target, value: f32, scale: f32, level: Option<f32>, muted: bool, dragging: bool) -> El {
     let c = &k.c;
     let frac = (value / scale).clamp(0.0, 1.0);
-    // The fill always reaches the knob; the live level is a sheen inside it, never past it.
-    let fill = if muted { c.border_strong } else { c.icon_muted };
+    // The fill always reaches the knob; the live level is a sheen inside it that brightens
+    // toward the level, never past the knob.
+    let fill = if muted { c.border_strong } else { c.text_base.alpha(0.5) };
     let mut parts = vec![el().key("fill").w_frac(frac).h_full().radius(TRACK / 2.0).fill(fill)];
     if let Some(l) = level.filter(|_| !muted && frac > 0.0) {
         parts.push(
@@ -83,8 +84,8 @@ pub fn volume(k: &Kit, target: Target, value: f32, scale: f32, level: Option<f32
                 .w_frac((l / scale).clamp(0.0, frac))
                 .h_full()
                 .radius(TRACK / 2.0)
-                .fill(c.text_base)
-                .opacity(0.55)
+                .linear_gradient(std::f32::consts::FRAC_PI_2, [(0.0, c.text_base.alpha(0.0)), (1.0, c.text_base.alpha(0.6))])
+                .box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 6.0, spread: 0.0, color: c.text_base.alpha(0.18), inset: false })
                 .motion(Spring::new(0.12, 0.0)),
         );
     }
