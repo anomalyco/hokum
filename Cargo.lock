@@ -1161,6 +1161,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ureq",
+ "wayland-client",
  "zbus 5.19.0",
 ]
 

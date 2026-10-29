@@ -20,6 +20,7 @@ libc = "0.2"
 kdl = "6"
 rhai = "1"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
+wayland-client = "0.31"
 
 [profile.release]
 codegen-units = 16

@@ -361,6 +361,25 @@ pub fn claim(conn: &Connection, replace: bool) -> Daemon {
     }
 }
 
+/// The process name (`/proc/<pid>/comm`) of whoever owns `org.freedesktop.Notifications`.
+pub fn owner_comm(conn: &Connection) -> String {
+    let pid = zbus::blocking::fdo::DBusProxy::new(conn)
+        .ok()
+        .and_then(|p| p.get_connection_unix_process_id(zbus::names::BusName::try_from(NAME).ok()?).ok());
+    pid.and_then(|pid| std::fs::read_to_string(format!("/proc/{pid}/comm")).ok())
+        .map(|c| c.trim().to_owned())
+        .unwrap_or_default()
+}
+
+/// Shows `body` through whatever notification server the desktop has, for a Hokum that was
+/// launched from a menu and can't run.
+pub fn tell(body: &str) {
+    let Ok(conn) = Connection::session() else { return };
+    let hints: HashMap<&str, zbus::zvariant::Value<'_>> = HashMap::new();
+    let args = ("Hokum", 0u32, "hokum", "Hokum can't run here", body, Vec::<&str>::new(), hints, -1i32);
+    let _ = conn.call_method(Some(NAME), PATH, Some(NAME), "Notify", &args);
+}
+
 /// Serves Hokum on the session bus and claims the notifications name. Losing the name later
 /// (to a newer Hokum) quits this one.
 pub fn serve(
