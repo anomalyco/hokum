@@ -1,11 +1,21 @@
 # Hokum
 
-Notifications for Wayland that look like they belong on a computer from this decade.
+A control center for Wayland that looks like it belongs on a computer from this decade.
 
-Hokum is a freedesktop notification daemon (`org.freedesktop.Notifications`) for compositors
-with `zwlr_layer_shell_v1`: niri, sway, Hyprland, river and others. It draws its cards with
-[Rune](https://github.com/anomalyco/rune), our Rust UI framework, so they slide in, restack on
-springs and get out of the way. A settings window picks a theme and sets how they behave.
+Hokum is one app for compositors with `zwlr_layer_shell_v1` (niri, sway, Hyprland, river and
+others), drawn with [Rune](https://github.com/anomalyco/rune), our Rust UI framework:
+
+- **Notifications:** a freedesktop notification daemon (`org.freedesktop.Notifications`) whose
+  cards slide in, restack on springs and get out of the way.
+- **Sound:** output, input and the apps playing, on PipeWire. Devices, ports, Bluetooth
+  codecs and balance a row down; profiles, virtual outputs, routing and the clock under
+  Advanced.
+- **Bluetooth:** power, connected and paired devices with battery, on BlueZ. Pairing (codes
+  inline), trust, rename and forget a row down; adapters and raw properties under Advanced.
+
+One window holds all three, one section each. One tray icon opens a panel with the output's
+volume and device, the microphone while something records, your Bluetooth devices and Do not
+disturb.
 
 ## Install
 
@@ -48,10 +58,16 @@ notifications first. On Omarchy, see [docs/omarchy.md](docs/omarchy.md).
 The first time it runs, Hokum shows one welcome card of its own with a button into Settings. It
 remembers that in `~/.local/state/hokum/welcomed`.
 
+Sound needs PipeWire (with WirePlumber) and Bluetooth needs BlueZ; without them their sections
+say so in one line and the tray panel leaves them out. The packages depend on `libpipewire`
+and recommend `pipewire`, `wireplumber` and `bluez`.
+
 ## Use
 
 ```sh
-hokum                     # the settings window (starts Hokum if it isn't running)
+hokum                     # the window (starts Hokum if it isn't running)
+hokum sound               # the window on Sound
+hokum bt                  # the window on Bluetooth (or hokum bluetooth)
 hokum service [--replace] # run in the background (what hokum.service starts)
 hokum check [path]        # report problems in config.kdl, or in a theme or config file
 hokum dismiss [--all]     # close the newest card, or every card
@@ -67,11 +83,33 @@ session bus (`Dismiss`, `Invoke`, `SetDoNotDisturb` and a `DoNotDisturb` propert
 its changes), which scripts can use directly.
 
 Like Hex, Hokum is one process: the service owns the bus name, draws the cards on a
-click-through overlay and hosts the settings window. Launching `hokum` again shows that window.
+click-through overlay, hosts the window, runs Sound and Bluetooth on their own threads and keeps
+the tray icon. Launching `hokum` again shows that window. A module that can't start, or fails
+later, says so in its section and leaves the rest running.
+
+### Modules
+
+Sound and Bluetooth are on unless `config.kdl` turns them off; the end of each section's
+Advanced page has a button for it too. With both off there's no tray icon.
+
+```kdl
+modules {
+    sound #true
+    bluetooth #false
+}
+```
+
+### Bluetooth pairing
+
+Hokum registers a BlueZ pairing agent, so pairings started from Hokum prompt in Hokum, with the
+code under the device. It asks to be the *default* agent (the one that answers pairings a
+device starts, and untrusted devices asking for a service) only when no other Bluetooth app
+that keeps one is running (blueman's applet, blueberry, Plasma's Bluedevil); then those keep
+answering them.
 
 - **One config file:** `~/.config/hokum/config.kdl` starts from a theme and overrides anything:
-  look (`tokens`), layout (`template`), per-app and per-text `rule`s, and `behaviour` (which
-  only the config sets; themes are just looks). The
+  look (`tokens`), layout (`template`), per-app and per-text `rule`s, `behaviour` and `modules`
+  (which only the config sets; themes are just looks). The
   settings window edits the same file, keeping your comments, and hand edits apply as you save.
   See [docs/theming.md](docs/theming.md).
 - **Themes:** eight built in (Soft, Crisp, Capsule, Ribbon, Terminal, Bubble, Signal, Pill), shown
@@ -118,11 +156,18 @@ the card's button does.
 
 ## Build
 
+Needs the PipeWire headers and clang for bindgen (`pipewire` and `clang` on Arch;
+`libpipewire-0.3-dev libspa-0.2-dev clang libclang-dev pkg-config` on Debian and Ubuntu).
+
 ```sh
 cargo build --release
 target/release/hokum service --snap cards.png --scene demo   # headless render, no D-Bus
 target/release/hokum --snap settings.png --scene hokum
+target/release/hokum --snap sound.png --scene sound          # Sound and Bluetooth on mocks
+target/release/hokum --snap panel.png --scene panel --size 364x440
 ```
+
+`HOKUM_SOUND_BACKEND=mock` and `HOKUM_BLUETOOTH_BACKEND=mock` run the service on fake devices.
 
 Releases are cut by `.github/workflows/release.yml`; see [docs/releasing.md](docs/releasing.md).
 

@@ -786,6 +786,9 @@ fn go(s: &mut Ui, tx: &mut Tx, page: Page) {
 
 fn go_section(s: &mut Ui, tx: &mut Tx, section: Section) {
     tx.instant();
+    if section != Section::Bluetooth {
+        s.bluetooth.set_adding(false);
+    }
     s.section = section;
 }
 
@@ -983,6 +986,9 @@ pub fn view(s: &Ui, cx: &mut Cx<Ui>) -> El {
         return crate::panel::view(s, window);
     }
     let mut layer = Vec::new();
+    if s.section != Section::Sound {
+        s.sound.unmeter();
+    }
     let main = match s.section {
         Section::Notifications => row().key("notifications").grow(1.0).h_full().child(notifications(s, window)).child(preview(s, preview_kit, window)),
         _ => module(s, window, &mut layer),

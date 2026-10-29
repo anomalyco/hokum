@@ -59,6 +59,20 @@ A theme names itself with `name "…"` (shown in the gallery). The built-in card
 A **script** (`~/.config/hokum/script.rhai`) is separate because it's code: it sees every
 notification first and can rewrite, route or drop it.
 
+## Modules
+
+Sound and Bluetooth are on unless config.kdl turns them off (themes don't set them):
+
+```kdl
+modules {
+    sound #true      // PipeWire: output, input, apps, devices, routing
+    bluetooth #false // BlueZ: devices, pairing, adapters
+}
+```
+
+The end of each module's Advanced page in the window turns it off, and its empty section turns
+it back on; either writes this block.
+
 ## Behaviour
 
 Behaviour comes only from config.kdl; anything unset uses the default (top right, 6 seconds, 5

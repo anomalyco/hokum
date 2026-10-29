@@ -304,6 +304,13 @@ impl Ui {
         }
     }
 
+    /// Off screen without being hidden (another section is showing): no meters.
+    pub fn unmeter(&self) {
+        if let Some(m) = &self.meters {
+            m.want(self.mode, HashSet::new());
+        }
+    }
+
     pub fn hidden(&mut self) {
         self.visible = false;
         self.slide = None;
