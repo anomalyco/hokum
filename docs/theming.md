@@ -67,10 +67,12 @@ Sound and Bluetooth are on unless config.kdl turns them off (themes don't set th
 modules {
     sound #true      // PipeWire: output, input, apps, devices, routing
     bluetooth #false // BlueZ: devices, pairing, adapters
+    osd #true        // a Volume card when the output changes outside Hokum
+    bluetooth-notifications #true // devices connecting, batteries running low
 }
 ```
 
-The end of each module's Advanced page in the window turns it off, and its empty section turns
+The end of each module's advanced pane in the window turns it off, and its empty section turns
 it back on; either writes this block.
 
 ## Behaviour

@@ -30,18 +30,23 @@ section and never takes notifications down.
   sidebar items.
 - Progressive disclosure, at most about six controls on a first level: Sound's
   first level is output, input and the apps playing (rows open in place; the
-  quiet Advanced button holds profiles, routing, the clock). Bluetooth's is the
+  advanced pane beside it holds profiles, routing, the clock). Bluetooth's is the
   power switch and connected and paired devices (rows open in place; pairing
-  codes inline; Advanced holds adapters and raw properties). Notifications
+  codes inline; the advanced pane holds adapters and raw properties). Notifications
   keeps Appearance, Behaviour and Applications as tabs in its section.
 - The tray panel: output volume and device, the input only while something
   records or it's muted, Bluetooth devices, Do not disturb, open the window.
 - Review every UI change from screenshots on mock backends before calling it
   done: `hokum --snap <png> --scene <name>` (scenes: `hokum`, `behaviour`,
-  `applications`, `app`, `other`, `sound`, `sound-expanded`, `sound-advanced`,
-  `sound-lost`, `sound-off`, `bluetooth`, `bluetooth-expanded`,
-  `bluetooth-pairing`, `bluetooth-advanced`, `bluetooth-off`, `panel` with
-  `--size 364x440`) and `hokum service --snap <png> --scene demo` for cards.
+  `applications`, `app`, `other`, `sound`, `sound-expanded`, `sound-input`,
+  `sound-routing`, `sound-clock`, `sound-issue`, `sound-lost`, `sound-off`,
+  `bluetooth`, `bluetooth-expanded`, `bluetooth-scan`, `bluetooth-pairing`,
+  `bluetooth-typing`, `bluetooth-pending`, `bluetooth-devices`,
+  `bluetooth-off`, `panel` with `--size 364x440`) and `hokum service --snap
+  <png> --scene demo|osd|bt-connected` for cards.
+- Sound and Bluetooth lay out like Notifications: the first screen in the
+  same left column, the advanced page in the pane on the right where
+  Notifications has its preview.
 
 ## Layout
 
@@ -54,6 +59,8 @@ section and never takes notifications down.
   `ui/` (handlers take the window's state; `lift` adapts the section's own).
 - `src/bluetooth/`: `model.rs`, `bluez/` (the backend and the pairing agent),
   `mock.rs`, `ui/`.
+- `src/integrations.rs`: the volume card (OSD) and Bluetooth cards (connected,
+  battery low), decided from the modules' snapshots.
 - The rest is notifications: `bus.rs`, `cards.rs`, `card.rs`, `theme.rs`,
   `config.rs`, `update.rs`, ...
 

@@ -8,10 +8,10 @@ others), drawn with [Rune](https://github.com/anomalyco/rune), our Rust UI frame
 - **Notifications:** a freedesktop notification daemon (`org.freedesktop.Notifications`) whose
   cards slide in, restack on springs and get out of the way.
 - **Sound:** output, input and the apps playing, on PipeWire. Devices, ports, Bluetooth
-  codecs and balance a row down; profiles, virtual outputs, routing and the clock under
-  Advanced.
+  codecs and balance a row down; profiles, virtual outputs, routing and the clock in
+  the pane beside them.
 - **Bluetooth:** power, connected and paired devices with battery, on BlueZ. Pairing (codes
-  inline), trust, rename and forget a row down; adapters and raw properties under Advanced.
+  inline), trust, rename and forget a row down; adapters and raw properties in the pane beside them.
 
 One window holds all three, one section each. One tray icon opens a panel with the output's
 volume and device, the microphone while something records, your Bluetooth devices and Do not
@@ -90,7 +90,7 @@ later, says so in its section and leaves the rest running.
 ### Modules
 
 Sound and Bluetooth are on unless `config.kdl` turns them off; the end of each section's
-Advanced page has a button for it too. With both off there's no tray icon.
+advanced pane has a button for it too. With both off there's no tray icon.
 
 ```kdl
 modules {
@@ -98,6 +98,14 @@ modules {
     bluetooth #false
 }
 ```
+
+### Cards from the modules
+
+When the default output's volume or mute changes from outside Hokum (volume keys, `wpctl`, an
+app), one Volume card shows the level and updates in place; it shows through Do not disturb.
+When a paired Bluetooth device connects, a card says so with its battery, and one more warns once
+when a device's battery drops below 20 % (again only after it's been back above 30 %). Turn them
+off with `osd #false` and `bluetooth-notifications #false` in `modules`.
 
 ### Bluetooth pairing
 
