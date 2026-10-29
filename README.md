@@ -152,7 +152,7 @@ answering them.
 - **Behaviour:** screen corner, how long cards stay, how many show, pause while hovered, and
   Do not disturb (only critical notifications and apps you allow show).
 - **Cards:** action buttons, a click for the default action (with an XDG activation token, so
-  the app can raise its window on Wayland), progress bars (`value`), and
+  the app can raise its window on Wayland), a right-click to dismiss, progress bars (`value`), and
   in-place replacement by `x-dunst-stack-tag` / `x-canonical-private-synchronous` (volume,
   brightness). Critical notifications stay until dismissed. Slack's `[workspace] in #channel`
   titles become the sender, the message, and the channel beside the app's name. Omarchy's

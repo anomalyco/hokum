@@ -224,7 +224,9 @@ pub fn card<S: Cards>(n: &Note, theme: &Theme, k: &Kit, position: Position) -> E
         .cursor(Cursor::Pointer)
         // The overlay takes the pointer only over cards; everywhere else clicks pass through.
         .hit()
-        .on_press(move |s: &mut S| s.activate(id));
+        .on_press(move |s: &mut S| s.activate(id))
+        // A right-click dismisses, as Omarchy's and swaync's cards do.
+        .on_secondary_press(move |s: &mut S, _, _| s.dismiss(id));
     root = match &t.fill {
         Fill::Solid(c) => root.fill(cx.paint(c)),
         Fill::Gradient(a, b) => root.gradient(cx.paint(a), cx.paint(b)),

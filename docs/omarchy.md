@@ -38,6 +38,8 @@ hl.unbind("SUPER + SHIFT + ALT + comma")
 
 Hokum keeps no history, so the last line only frees `showHistory`'s key.
 
+As with Omarchy's own cards, a right-click dismisses a card.
+
 ## Omarchy's own notifications
 
 Hokum reads the hints `omarchy-notification-send` sets: clicking a card (or `hokum invoke`)
