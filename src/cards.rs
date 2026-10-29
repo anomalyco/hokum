@@ -638,6 +638,9 @@ pub fn overlay(config: &Config) -> rune::ConfiguredOverlay<Ui> {
         ..OverlayOptions::default()
     })
     .setup(|ui, waker| ui.cache = Some(rune::ImageCache::new(waker)))
+    // The overlay hides while empty, so the first card of a burst arrives in the update that
+    // shows it; without this, showing would land that card at rest.
+    .animate_reveal()
 }
 
 /// Sleeps until the earliest deadline, then expires what's due; each reschedule replaces it.
