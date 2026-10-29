@@ -40,6 +40,18 @@ fn hint<T: TryFrom<OwnedValue>>(hints: &HashMap<String, OwnedValue>, key: &str) 
         .and_then(|v| T::try_from(v).ok())
 }
 
+/// The ID a Notify call gets: `replaces_id` when it names one, else the next unused. An app may
+/// name an ID from before Hokum (re)started (xdg-desktop-portal-gtk keeps them for each app's
+/// notifications); counting past it keeps a later notification from taking the same ID and
+/// replacing that card.
+fn assign(next: &AtomicU32, replaces_id: u32) -> u32 {
+    if replaces_id == 0 {
+        return next.fetch_add(1, Ordering::Relaxed);
+    }
+    next.fetch_max(replaces_id.saturating_add(1), Ordering::Relaxed);
+    replaces_id
+}
+
 /// The spec's `image-data` hint, `(iiibiiay)`.
 fn image_data(v: &OwnedValue) -> Option<Source> {
     let s = zbus::zvariant::Structure::try_from(v.try_clone().ok()?).ok()?;
@@ -185,11 +197,7 @@ impl Server {
         hints: HashMap<String, OwnedValue>,
         expire_timeout: i32,
     ) -> u32 {
-        let id = if replaces_id != 0 {
-            replaces_id
-        } else {
-            self.next.fetch_add(1, Ordering::Relaxed)
-        };
+        let id = assign(&self.next, replaces_id);
         let app = Some(app_name)
             .filter(|a| !a.is_empty())
             .or_else(|| hint::<String>(&hints, "desktop-entry"))
@@ -686,6 +694,22 @@ impl<T: serde::Serialize + zbus::zvariant::DynamicType> Body for T {
 #[cfg(test)]
 mod tests {
     use super::{exec_argv, glyph, omarchy_actions, split_actions};
+
+    #[test]
+    fn a_replaced_id_is_never_handed_out_again() {
+        use super::assign;
+        let next = std::sync::atomic::AtomicU32::new(1);
+        assert_eq!(assign(&next, 0), 1);
+        // An ID from before a restart, as the GTK portal sends it.
+        assert_eq!(assign(&next, 7), 7);
+        assert_eq!(assign(&next, 0), 8);
+        assert_eq!(
+            assign(&next, 3),
+            3,
+            "replacing an older one doesn't move the count back"
+        );
+        assert_eq!(assign(&next, 0), 9);
+    }
 
     #[test]
     fn omarchy_hints() {
