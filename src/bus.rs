@@ -216,14 +216,14 @@ struct Who {
 /// Finds the app behind a notification and its icon, most specific first: a browser's site
 /// that is an installed web app; the icon the notification names; its `desktop-entry`; its
 /// sandbox (`crate::sender`); its name (`crate::entries::Index::by_name`); the unit, launcher
-/// or AppImage its process runs in; an icon called like it. `pid` is the sender's process.
+/// or AppImage its process runs in; an icon called like it. `clues` are the sender's process's.
 fn identify(
     index: &crate::entries::Index,
     app: &str,
     app_icon: &str,
     desktop: Option<&str>,
     body: &str,
-    pid: Option<u32>,
+    clues: &crate::sender::Clues,
 ) -> Who {
     let named = desktop
         .and_then(|d| index.by_id(d))
@@ -251,14 +251,11 @@ fn identify(
         return who;
     }
     // The first entry found names the app; the first with an icon that resolves draws it.
-    let clues = pid
-        .map(|p| crate::sender::clues(std::path::Path::new("/proc"), p))
-        .unwrap_or_default();
     let candidates = [
         desktop.and_then(|d| index.by_id(d)),
-        crate::sender::sandboxed(index, &clues),
+        crate::sender::sandboxed(index, clues),
         index.by_name(app),
-        crate::sender::launched(index, &clues),
+        crate::sender::launched(index, clues),
     ];
     for e in candidates.into_iter().flatten() {
         if who.entry.is_none() {
@@ -279,6 +276,161 @@ fn identify(
     who.icon = crate::icons::icon(app.trim()).or_else(|| crate::icons::icon(&slug));
     who.guessed = who.icon.is_some();
     who
+}
+
+/// A Notify call, as `build` turns it into a card.
+struct Request {
+    id: u32,
+    /// The sender's process as the bus reports it.
+    bus_pid: Option<u32>,
+    app_name: String,
+    app_icon: String,
+    summary: String,
+    body: String,
+    actions: Vec<String>,
+    hints: HashMap<String, OwnedValue>,
+    expire_timeout: i32,
+}
+
+/// Whether a sender's Omarchy `omarchy-exec-argv` and `omarchy-actions` hints count. Those make
+/// Hokum run a command outside whatever sandbox the sender is in, so only on Omarchy (whose own
+/// `omarchy-notification-send` sets them), only for a sender the bus names a process for (not
+/// the `sender-pid` hint, which is the sender's word) whose cgroup can be read, and never for a
+/// Flatpak or Snap. Any unsandboxed process of the user's could run the command itself.
+fn may_run_commands(
+    bus_pid: Option<u32>,
+    clues: &crate::sender::Clues,
+    proc_root: &std::path::Path,
+    omarchy: impl FnOnce() -> bool,
+) -> bool {
+    let Some(pid) = bus_pid else {
+        return false;
+    };
+    clues.flatpak.is_none()
+        && clues.snap.is_none()
+        && std::fs::read_to_string(proc_root.join(pid.to_string()).join("cgroup"))
+            .is_ok_and(|c| !c.trim().is_empty())
+        && omarchy()
+}
+
+/// The card a Notify call asks for.
+fn build(r: Request) -> Note {
+    let Request {
+        id,
+        bus_pid,
+        app_name,
+        app_icon,
+        summary,
+        body,
+        actions,
+        hints,
+        expire_timeout,
+    } = r;
+    let app = Some(crate::apps::clean(&app_name))
+        .filter(|a| !a.is_empty())
+        .or_else(|| hint::<String>(&hints, "desktop-entry").map(|d| crate::apps::clean(&d)))
+        .filter(|a| !a.is_empty())
+        .unwrap_or_else(|| "Notification".into());
+    // The bus knows the sender's process; the hint is the sender's word for it.
+    let pid = bus_pid
+        .or_else(|| hint::<i64>(&hints, "sender-pid").and_then(|p| u32::try_from(p).ok()))
+        .or_else(|| hint::<u32>(&hints, "sender-pid"));
+    let desktop = hint::<String>(&hints, "desktop-entry").filter(|d| !d.is_empty());
+    let proc_root = std::path::Path::new("/proc");
+    let clues = pid
+        .map(|p| crate::sender::clues(proc_root, p))
+        .unwrap_or_default();
+    let who = identify(
+        &crate::entries::index(),
+        &app,
+        &app_icon,
+        desktop.as_deref(),
+        &body,
+        &clues,
+    );
+    let who = Who {
+        app: crate::apps::clean(&who.app),
+        ..who
+    };
+    let (summary, body) = (plain(&summary), plain(&who.body));
+    let slacky = app.eq_ignore_ascii_case("slack") || desktop.as_deref() == Some("slack");
+    let mut n = match slacky.then(|| slack(&summary, &body)).flatten() {
+        Some((context, sender, message)) => {
+            let mut n = Note::new(id, who.app, sender, message);
+            n.context = Some(context);
+            n
+        }
+        None => Note::new(id, who.app, summary, body),
+    };
+    n.context = n.context.take().or(who.context);
+    n.urgency = hint::<u8>(&hints, "urgency").unwrap_or(1);
+    n.value = hint::<i32>(&hints, "value").map(|v| (v as f32 / 100.0).clamp(0.0, 1.0));
+    n.tag = hint::<String>(&hints, "x-dunst-stack-tag")
+        .or_else(|| hint::<String>(&hints, "x-canonical-private-synchronous"))
+        .filter(|t| !t.is_empty());
+    n.resident = hint::<bool>(&hints, "resident").unwrap_or(false);
+    n.icon_src = who.icon.map(Source::File);
+    let guessed = who.guessed;
+    n.entry = who.entry;
+    // The token names the app that raises a window: the sender's own entry, else the one found.
+    n.desktop = desktop.or_else(|| n.entry.clone());
+    let image_path =
+        hint::<String>(&hints, "image-path").or_else(|| hint::<String>(&hints, "image_path"));
+    // A theme icon's name there (`notify-send -i drive-harddisk` with newer libnotify) is an
+    // icon, not a picture: it stands in for an app that has none, or only a guessed one.
+    if (n.icon_src.is_none() || guessed)
+        && let Some(icon) = image_path
+            .as_deref()
+            .filter(|p| !p.starts_with('/') && !p.contains("://"))
+            .and_then(crate::icons::icon)
+    {
+        n.icon_src = Some(Source::File(icon));
+    }
+    n.image_src = ["image-data", "image_data", "icon_data"]
+        .iter()
+        .find_map(|k| hints.get(*k).and_then(image_data))
+        .or_else(|| crate::icons::icon(image_path.as_deref()?).map(Source::File))
+        // The app's own icon isn't a picture of the notification.
+        .filter(|img| match &n.icon_src {
+            Some(Source::File(icon)) => !crate::icons::repeats(img, icon),
+            _ => true,
+        });
+    (n.has_default, n.actions) = split_actions(&actions);
+    let exec = hint::<String>(&hints, "omarchy-exec-argv");
+    let buttons = hint::<String>(&hints, "omarchy-actions");
+    let commands = (exec.is_some() || buttons.is_some())
+        && may_run_commands(bus_pid, &clues, proc_root, crate::omarchy_theme::present);
+    if (exec.is_some() || buttons.is_some()) && !commands {
+        eprintln!(
+            "hokum: ignoring the Omarchy command hints of {app}'s notification (not on Omarchy, or a sandboxed sender)"
+        );
+    }
+    if let Some(argv) = exec.filter(|_| commands).as_deref().and_then(exec_argv) {
+        n.commands.push(("default".into(), argv));
+    }
+    for (key, label, argv) in buttons
+        .filter(|_| commands)
+        .as_deref()
+        .map(omarchy_actions)
+        .unwrap_or_default()
+    {
+        n.actions.push((key.clone(), label));
+        n.commands.push((key, argv));
+    }
+    // Omarchy draws its glyph only when no picture resolves; so does the letter it replaces.
+    n.glyph = hint::<String>(&hints, "omarchy-glyph")
+        .as_deref()
+        .and_then(glyph);
+    // Measured here, off the UI thread, so the badge finds it cached.
+    if let Some(g) = &n.glyph {
+        crate::glyph::ink_shift(g);
+    }
+    n.timeout = match expire_timeout {
+        0 => Timeout::Never,
+        t if t > 0 => Timeout::After(Duration::from_millis(t as u64)),
+        _ => Timeout::Default,
+    };
+    n
 }
 
 #[zbus::interface(name = "org.freedesktop.Notifications")]
@@ -308,12 +460,7 @@ impl Server {
         expire_timeout: i32,
     ) -> u32 {
         let id = assign(&self.next, replaces_id);
-        let app = Some(app_name)
-            .filter(|a| !a.is_empty())
-            .or_else(|| hint::<String>(&hints, "desktop-entry"))
-            .unwrap_or_else(|| "Notification".into());
-        // The bus knows the sender's process; the hint is the sender's word for it.
-        let pid = match header.sender() {
+        let bus_pid = match header.sender() {
             Some(sender) => match zbus::fdo::DBusProxy::new(conn).await {
                 Ok(bus) => bus
                     .get_connection_unix_process_id(sender.clone().into())
@@ -322,90 +469,37 @@ impl Server {
                 Err(_) => None,
             },
             None => None,
-        }
-        .or_else(|| hint::<i64>(&hints, "sender-pid").and_then(|p| u32::try_from(p).ok()))
-        .or_else(|| hint::<u32>(&hints, "sender-pid"));
-        let desktop = hint::<String>(&hints, "desktop-entry").filter(|d| !d.is_empty());
-        let who = identify(
-            &crate::entries::index(),
-            &app,
-            &app_icon,
-            desktop.as_deref(),
-            &body,
-            pid,
-        );
-        let (summary, body) = (plain(&summary), plain(&who.body));
-        let slacky = app.eq_ignore_ascii_case("slack") || desktop.as_deref() == Some("slack");
-        let mut n = match slacky.then(|| slack(&summary, &body)).flatten() {
-            Some((context, sender, message)) => {
-                let mut n = Note::new(id, who.app, sender, message);
-                n.context = Some(context);
-                n
-            }
-            None => Note::new(id, who.app, summary, body),
         };
-        n.context = n.context.take().or(who.context);
-        n.urgency = hint::<u8>(&hints, "urgency").unwrap_or(1);
-        n.value = hint::<i32>(&hints, "value").map(|v| (v as f32 / 100.0).clamp(0.0, 1.0));
-        n.tag = hint::<String>(&hints, "x-dunst-stack-tag")
-            .or_else(|| hint::<String>(&hints, "x-canonical-private-synchronous"))
-            .filter(|t| !t.is_empty());
-        n.resident = hint::<bool>(&hints, "resident").unwrap_or(false);
-        n.icon_src = who.icon.map(Source::File);
-        let guessed = who.guessed;
-        n.entry = who.entry;
-        // The token names the app that raises a window: the sender's own entry, else the one found.
-        n.desktop = desktop.or_else(|| n.entry.clone());
-        let image_path =
-            hint::<String>(&hints, "image-path").or_else(|| hint::<String>(&hints, "image_path"));
-        // A theme icon's name there (`notify-send -i drive-harddisk` with newer libnotify) is an
-        // icon, not a picture: it stands in for an app that has none, or only a guessed one.
-        if (n.icon_src.is_none() || guessed)
-            && let Some(icon) = image_path
-                .as_deref()
-                .filter(|p| !p.starts_with('/') && !p.contains("://"))
-                .and_then(crate::icons::icon)
-        {
-            n.icon_src = Some(Source::File(icon));
-        }
-        n.image_src = ["image-data", "image_data", "icon_data"]
-            .iter()
-            .find_map(|k| hints.get(*k).and_then(image_data))
-            .or_else(|| crate::icons::icon(image_path.as_deref()?).map(Source::File))
-            // The app's own icon isn't a picture of the notification.
-            .filter(|img| match &n.icon_src {
-                Some(Source::File(icon)) => !crate::icons::repeats(img, icon),
-                _ => true,
+        let request = Request {
+            id,
+            bus_pid,
+            app_name,
+            app_icon,
+            summary,
+            body,
+            actions,
+            hints,
+            expire_timeout,
+        };
+        // Built on a thread of its own, off zbus's executor (it reads files and decodes
+        // pictures), and caught: a hint that trips a bug loses its card, but the sender still
+        // gets its answer instead of waiting out the D-Bus timeout.
+        let (tx, rx) = async_channel::bounded(1);
+        let spawned = std::thread::Builder::new()
+            .name("hokum-notify".into())
+            .spawn(move || {
+                let note =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| build(request)));
+                if note.is_err() {
+                    eprintln!("hokum: notification {id} tripped a bug and isn't shown");
+                }
+                let _ = tx.send_blocking(note.ok());
             });
-        (n.has_default, n.actions) = split_actions(&actions);
-        if let Some(argv) = hint::<String>(&hints, "omarchy-exec-argv")
-            .as_deref()
-            .and_then(exec_argv)
+        if spawned.is_ok()
+            && let Ok(Some(n)) = rx.recv().await
         {
-            n.commands.push(("default".into(), argv));
+            self.ui.update(move |s, _| s.upsert(n));
         }
-        for (key, label, argv) in hint::<String>(&hints, "omarchy-actions")
-            .as_deref()
-            .map(omarchy_actions)
-            .unwrap_or_default()
-        {
-            n.actions.push((key.clone(), label));
-            n.commands.push((key, argv));
-        }
-        // Omarchy draws its glyph only when no picture resolves; so does the letter it replaces.
-        n.glyph = hint::<String>(&hints, "omarchy-glyph")
-            .as_deref()
-            .and_then(glyph);
-        // Measured here, off the UI thread, so the badge finds it cached.
-        if let Some(g) = &n.glyph {
-            crate::glyph::ink_shift(g);
-        }
-        n.timeout = match expire_timeout {
-            0 => Timeout::Never,
-            t if t > 0 => Timeout::After(Duration::from_millis(t as u64)),
-            _ => Timeout::Default,
-        };
-        self.ui.update(move |s, _| s.upsert(n));
         id
     }
 
@@ -978,7 +1072,7 @@ mod tests {
             &logo,
             Some("google-chrome"),
             "<a href=\"https://web.whatsapp.com/\">web.whatsapp.com</a>\n\nhi",
-            None,
+            &Default::default(),
         );
         assert_eq!(
             (
@@ -997,7 +1091,7 @@ mod tests {
             &logo,
             Some("google-chrome"),
             "example.com\n\nhello",
-            None,
+            &Default::default(),
         );
         assert_eq!(
             (o.app.as_str(), o.context.as_deref(), o.body.as_str()),
@@ -1011,7 +1105,7 @@ mod tests {
             "",
             Some("bb-desktop"),
             "example.com\n\nhello",
-            None,
+            &Default::default(),
         );
         assert_eq!(
             (b.body.as_str(), b.entry.as_deref()),
@@ -1022,15 +1116,22 @@ mod tests {
             Some(dir.join("bb.png")),
             "desktop-entry names no file; StartupWMClass finds it"
         );
-        let h = identify(&index, "co.hyprlab.Hylki.Beta", "", None, "", None);
+        let h = identify(
+            &index,
+            "co.hyprlab.Hylki.Beta",
+            "",
+            None,
+            "",
+            &Default::default(),
+        );
         assert_eq!(h.icon, Some(dir.join("hylki.png")), "an ID in its own case");
         assert_eq!(h.app, "Hylki", "an ID for a name reads as the entry's name");
         assert_eq!(
-            identify(&index, "bb Nightly", "", None, "", None).app,
+            identify(&index, "bb Nightly", "", None, "", &Default::default()).app,
             "bb Nightly",
             "a name stays as sent"
         );
-        let n = identify(&index, "Broken", "", None, "", None);
+        let n = identify(&index, "Broken", "", None, "", &Default::default());
         assert_eq!(
             (n.entry.as_deref(), n.icon.is_none()),
             (Some("electron-noicon"), true)
@@ -1052,6 +1153,100 @@ mod tests {
             "replacing an older one doesn't move the count back"
         );
         assert_eq!(assign(&next, 0), 9);
+    }
+
+    fn request(hints: Vec<(&str, zbus::zvariant::Value<'static>)>) -> super::Request {
+        super::Request {
+            id: 1,
+            bus_pid: None,
+            app_name: "Test\nApp\tname".into(),
+            app_icon: "/proc/self/environ".into(),
+            summary: "s".into(),
+            body: "b".into(),
+            actions: Vec::new(),
+            hints: hints
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        k.to_owned(),
+                        zbus::zvariant::OwnedValue::try_from(v).unwrap(),
+                    )
+                })
+                .collect(),
+            expire_timeout: -1,
+        }
+    }
+
+    #[test]
+    fn crafted_image_data_is_dropped_not_a_panic() {
+        use zbus::zvariant::Value;
+        for (w, h, stride) in [(2, 2, -8), (-2, 2, 6), (2, -2, 6), (2, 2, i32::MIN)] {
+            let image = Value::from((w, h, stride, false, 8i32, 3i32, vec![0u8; 12]));
+            let n = super::build(request(vec![("image-data", image)]));
+            assert_eq!(n.image_src, None, "{w}x{h} stride {stride}");
+        }
+        let fine = Value::from((2i32, 2i32, 6i32, false, 8i32, 3i32, vec![0u8; 12]));
+        assert!(
+            super::build(request(vec![("image-data", fine)]))
+                .image_src
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn app_names_and_paths_from_a_sender_are_tamed() {
+        let n = super::build(request(vec![(
+            "image-path",
+            zbus::zvariant::Value::from("/proc/self/environ"),
+        )]));
+        assert_eq!(n.app, "Test App name");
+        assert_ne!(
+            n.icon_src,
+            Some(crate::icons::Source::File("/proc/self/environ".into()))
+        );
+        assert_eq!(n.image_src, None);
+    }
+
+    #[test]
+    fn command_hints_need_omarchy_and_an_unsandboxed_sender() {
+        use crate::sender::Clues;
+        let exec = zbus::zvariant::Value::from(r#"["touch","/tmp/x"]"#);
+        let buttons = zbus::zvariant::Value::from(r#"[{"label":"Go","argv":["true"]}]"#);
+        // No process the bus vouches for: never, even on Omarchy.
+        let n = super::build(request(vec![
+            ("omarchy-exec-argv", exec),
+            ("omarchy-actions", buttons),
+        ]));
+        assert!(n.commands.is_empty());
+        assert!(n.actions.is_empty());
+
+        let root = std::env::temp_dir().join(format!("hokum-may-run-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("42")).unwrap();
+        std::fs::write(
+            root.join("42/cgroup"),
+            "0::/user.slice/app.slice/app-Hyprland-kitty-1.scope\n",
+        )
+        .unwrap();
+        let plain = Clues::default();
+        let flatpak = Clues {
+            flatpak: Some("org.telegram.desktop".into()),
+            ..Clues::default()
+        };
+        let snap = Clues {
+            snap: Some(("slack".into(), "slack".into())),
+            ..Clues::default()
+        };
+        use super::may_run_commands as may;
+        assert!(may(Some(42), &plain, &root, || true));
+        assert!(!may(Some(42), &plain, &root, || false), "not on Omarchy");
+        assert!(!may(Some(42), &flatpak, &root, || true), "a Flatpak");
+        assert!(!may(Some(42), &snap, &root, || true), "a Snap");
+        assert!(!may(None, &plain, &root, || true), "no PID from the bus");
+        assert!(
+            !may(Some(43), &plain, &root, || true),
+            "a process that's gone"
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

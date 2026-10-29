@@ -47,6 +47,21 @@ runs its `omarchy-exec-argv` command directly, without a shell, `omarchy-actions
 card's buttons, and an `omarchy-glyph` takes the place of the app's letter when there is no
 icon. Glyphs are Nerd Font icons and draw in your `monospace` font, which Omarchy sets to one.
 
+The two command hints make Hokum run something, so Hokum is stricter about them than Omarchy's
+shell, which takes them from any sender:
+
+- Only on Omarchy (when `~/.local/state/omarchy/current/theme/colors.toml` exists). On any
+  other desktop they are ignored and the card behaves like any other.
+- Only from a sender the session bus names a process for, and never from a Flatpak or Snap app
+  (found from the process's systemd scope, its `/.flatpak-info` or `FLATPAK_ID`). A sandboxed
+  app that may send notifications can't use them to run a command outside its sandbox.
+
+Ignored hints leave one line in Hokum's log. `hokum invoke`, and the `Invoke` method of
+`app.hokum.Daemon` behind it, still do what a click does, command included: that is your
+`SUPER + ALT + comma`. Any program of yours outside a sandbox can call `Invoke`, but it could
+run the command itself just as well, and sandboxed apps can only send the card, not give it a
+command. Like Omarchy, Hokum doesn't defend against your own unsandboxed programs.
+
 ## What stays with Omarchy
 
 - `omarchy-notification-wait` also asks the shell (`omarchy-shell notifications ping`), so with

@@ -344,6 +344,28 @@ pub fn forget() {
     *THEMES.lock().unwrap() = None;
 }
 
+/// The most a picture file may weigh: the image cache reads it whole.
+const MAX_FILE: u64 = 32 << 20;
+
+/// Under the kernel's pseudo-filesystems, whose files aren't pictures and can block, grow or
+/// describe other processes. Omarchy's shell refuses them too.
+fn special(path: &Path) -> bool {
+    ["/proc", "/sys", "/dev"]
+        .iter()
+        .any(|root| path.starts_with(root))
+}
+
+/// A path a notification names, as the regular file it resolves to (so a symlink can't be
+/// re-pointed afterwards), unless it is under `/proc`, `/sys` or `/dev` or too large.
+fn picture_file(path: &Path) -> Option<PathBuf> {
+    if !path.is_absolute() || special(path) {
+        return None;
+    }
+    let real = std::fs::canonicalize(path).ok()?;
+    let meta = std::fs::metadata(&real).ok()?;
+    (!special(&real) && meta.is_file() && meta.len() <= MAX_FILE).then_some(real)
+}
+
 /// An icon name in the theme, or a path (`file://` URIs too).
 pub fn icon(name: &str) -> Option<PathBuf> {
     let name = name.trim();
@@ -351,10 +373,10 @@ pub fn icon(name: &str) -> Option<PathBuf> {
         return None;
     }
     if let Some(path) = name.strip_prefix("file://") {
-        return Some(PathBuf::from(path)).filter(|p| p.is_file());
+        return picture_file(Path::new(path));
     }
     if name.starts_with('/') {
-        return Some(PathBuf::from(name)).filter(|p| p.is_file());
+        return picture_file(Path::new(name));
     }
     if let Some(hit) = cache().lock().unwrap().get(name) {
         return hit.clone();
@@ -458,15 +480,62 @@ fn file_thumb(path: &Path) -> Option<Thumb> {
     if let Some(t) = thumbs.lock().unwrap().get(path) {
         return t.clone();
     }
-    let t = rune::image::app_icon_rgba(path, 64)
-        .ok()
-        .and_then(|(w, h, rgba)| thumb(w, h, &rgba));
+    let t = small_rgba(path).and_then(|(w, h, rgba)| thumb(w, h, &rgba));
     let mut thumbs = thumbs.lock().unwrap();
     if thumbs.len() > 256 {
         thumbs.clear();
     }
     thumbs.insert(path.to_owned(), t.clone());
     t
+}
+
+/// The most a picture compared with an icon may weigh, and its largest side once decoded.
+const THUMB_FILE: u64 = 4 << 20;
+const THUMB_SIDE: u32 = 1024;
+
+/// A small picture or icon file decoded within limits, for `thumb`: at most `THUMB_FILE`
+/// bytes, `THUMB_SIDE` pixels a side (checked before decoding) and a bounded allocation. An
+/// SVG is drawn at 64 pixels.
+fn small_rgba(path: &Path) -> Option<(u32, u32, Vec<u8>)> {
+    use std::io::Read;
+    if special(path) {
+        return None;
+    }
+    let file = std::fs::File::open(path).ok()?;
+    let meta = file.metadata().ok()?;
+    if !meta.is_file() || meta.len() > THUMB_FILE {
+        return None;
+    }
+    if path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("svg"))
+    {
+        return rune::image::app_icon_rgba(path, 64).ok();
+    }
+    let mut bytes = Vec::new();
+    file.take(THUMB_FILE + 1).read_to_end(&mut bytes).ok()?;
+    if bytes.len() as u64 > THUMB_FILE {
+        return None;
+    }
+    decode_limited(&bytes)
+}
+
+/// PNG or JPEG bytes as RGBA8, refused before decoding when they say they're larger than
+/// `THUMB_SIDE` a side.
+fn decode_limited(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(THUMB_SIDE);
+    limits.max_image_height = Some(THUMB_SIDE);
+    limits.max_alloc = Some(64 << 20);
+    reader.limits(limits);
+    let image = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| reader.decode().ok()))
+        .ok()
+        .flatten()?
+        .into_rgba8();
+    Some((image.width(), image.height(), image.into_raw()))
 }
 
 /// Whether `picture` is the app's icon again (Electron apps send their icon as the picture):
@@ -489,7 +558,9 @@ pub fn repeats(picture: &Source, icon: &Path) -> bool {
 }
 
 /// The spec's `image-data` (`(iiibiiay)`: width, height, rowstride, has alpha, bits per
-/// sample, channels, data) as RGBA8.
+/// sample, channels, data) as RGBA8. Anything that doesn't add up is refused rather than
+/// guessed at: a negative or zero size, a row stride shorter than a row, data too short for the
+/// rows it claims, samples other than 8 bits, or channels other than RGB or RGBA.
 pub fn image_data(
     width: i32,
     height: i32,
@@ -499,28 +570,29 @@ pub fn image_data(
     channels: i32,
     data: &[u8],
 ) -> Option<Source> {
+    let positive = |v: i32| usize::try_from(v).ok().filter(|v| *v > 0);
     let (w, h, stride, channels) = (
-        width as usize,
-        height as usize,
-        stride as usize,
-        channels as usize,
+        positive(width)?,
+        positive(height)?,
+        positive(stride)?,
+        positive(channels)?,
     );
-    if bits != 8
-        || w == 0
-        || h == 0
-        || w > 4096
-        || h > 4096
-        || !(3..=4).contains(&channels)
-        || (alpha && channels != 4)
+    if bits != 8 || w > 4096 || h > 4096 || !(3..=4).contains(&channels) || (alpha && channels != 4)
     {
         return None;
     }
-    if data.len() < stride * (h - 1) + w * channels {
+    let row = w.checked_mul(channels)?;
+    if stride < row {
+        return None;
+    }
+    let needed = stride.checked_mul(h - 1)?.checked_add(row)?;
+    if data.len() < needed {
         return None;
     }
     let mut out = Vec::with_capacity(w * h * 4);
-    for row in 0..h {
-        for px in data[row * stride..row * stride + w * channels].chunks_exact(channels) {
+    for y in 0..h {
+        let start = y * stride;
+        for px in data.get(start..start + row)?.chunks_exact(channels) {
             out.extend_from_slice(&[px[0], px[1], px[2], if channels == 4 { px[3] } else { 255 }]);
         }
     }
@@ -557,6 +629,77 @@ mod tests {
             image_data(2, 2, 6, false, 8, 3, &[0; 7]).is_none(),
             "short data"
         );
+    }
+
+    #[test]
+    fn crafted_image_data_is_refused_without_panicking() {
+        let data = [0u8; 64];
+        // (width, height, rowstride, alpha, bits, channels)
+        let bad = [
+            (2, 2, -8, false, 8, 3),
+            (2, 2, i32::MIN, false, 8, 3),
+            (-2, 2, 6, false, 8, 3),
+            (2, -2, 6, false, 8, 3),
+            (0, 2, 6, false, 8, 3),
+            (2, 0, 6, false, 8, 3),
+            (2, 2, 0, false, 8, 3),
+            (2, 2, 5, false, 8, 3),
+            (2, 2, 6, false, 8, -3),
+            (2, 2, 6, false, 8, 1),
+            (2, 2, 8, true, 8, 3),
+            (2, 2, 6, false, -8, 3),
+            (5000, 1, 15000, false, 8, 3),
+            (2, i32::MAX, i32::MAX, false, 8, 3),
+            (4096, 4096, i32::MAX, false, 8, 4),
+        ];
+        for (w, h, s, a, b, c) in bad {
+            assert!(
+                image_data(w, h, s, a, b, c, &data).is_none(),
+                "{w}x{h} stride {s} alpha {a} bits {b} channels {c}"
+            );
+        }
+        assert!(image_data(2, 2, 8, true, 8, 4, &[7; 16]).is_some());
+        assert!(image_data(2, 2, 8, true, 8, 4, &[7; 15]).is_none());
+    }
+
+    #[test]
+    fn notification_paths_skip_kernel_filesystems() {
+        for p in [
+            "/proc/self/environ",
+            "file:///proc/self/cmdline",
+            "/sys/kernel/notes",
+            "/dev/zero",
+            "/dev/stdin",
+        ] {
+            assert_eq!(icon(p), None, "{p}");
+        }
+        // A link elsewhere that points into /proc.
+        let dir = tree(&[("ok.png", "x")]);
+        let link = dir.join("link.png");
+        std::os::unix::fs::symlink("/proc/self/status", &link).unwrap();
+        assert_eq!(icon(link.to_str().unwrap()), None);
+        assert_eq!(
+            icon(&format!("file://{}", dir.join("ok.png").display())),
+            Some(std::fs::canonicalize(dir.join("ok.png")).unwrap())
+        );
+        assert!(small_rgba(Path::new("/proc/self/status")).is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn thumbnails_refuse_huge_pictures_before_decoding() {
+        let dir = tree(&[]);
+        std::fs::create_dir_all(&dir).unwrap();
+        // A PNG that says it is 20000 pixels wide: refused from its header.
+        let big = dir.join("big.png");
+        let row = vec![0u8; 20000 * 4];
+        rune::render::write_png(&big, 20000, 1, &row).unwrap();
+        assert!(small_rgba(&big).is_none());
+        let small = dir.join("small.png");
+        rune::render::write_png(&small, 4, 4, &[9u8; 64]).unwrap();
+        assert_eq!(small_rgba(&small).map(|(w, h, _)| (w, h)), Some((4, 4)));
+        assert!(decode_limited(b"not a picture").is_none());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     fn tree(files: &[(&str, &str)]) -> PathBuf {

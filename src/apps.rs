@@ -30,13 +30,33 @@ fn parse(text: &str) -> Vec<App> {
         .collect()
 }
 
+/// An app's name as Hokum shows and keeps it: control characters (newlines and tabs too,
+/// which would split this file's lines and fields) become spaces, runs of space collapse, and
+/// it is at most 80 characters.
+pub fn clean(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for ch in name.chars().map(|c| if c.is_control() { ' ' } else { c }) {
+        if ch == ' ' && (out.is_empty() || out.ends_with(' ')) {
+            continue;
+        }
+        out.push(ch);
+    }
+    let out = out.trim_end();
+    match out.char_indices().nth(80) {
+        Some((i, _)) => out[..i].trim_end().to_owned(),
+        None => out.to_owned(),
+    }
+}
+
 /// Notes that `app` sent something (found as desktop entry `entry`); saves when the list changes.
 pub fn record(app: &str, entry: Option<&str>) {
-    let app = app.trim();
+    let app = clean(app);
+    let app = app.as_str();
     if app.is_empty() {
         return;
     }
-    let item = (app.to_owned(), entry.map(str::to_owned));
+    let entry = entry.map(clean).filter(|e| !e.is_empty());
+    let item = (app.to_owned(), entry);
     let mut apps = list().lock().unwrap();
     if apps.first() == Some(&item) {
         return;
@@ -87,5 +107,14 @@ mod tests {
         assert_eq!(apps[0], ("WhatsApp".into(), Some("WhatsApp".into())));
         assert_eq!(apps[1], ("Slack".into(), None));
         assert_eq!(apps[2], ("bb Nightly".into(), Some("bb_nightly".into())));
+    }
+
+    #[test]
+    fn names_lose_control_characters() {
+        assert_eq!(super::clean("Evil\nInjected\tentry"), "Evil Injected entry");
+        assert_eq!(super::clean("  a\r\n\u{7}b  "), "a b");
+        assert_eq!(super::clean("\n\t"), "");
+        assert_eq!(super::clean(&"x".repeat(200)).len(), 80);
+        assert_eq!(super::clean("Slack"), "Slack");
     }
 }
