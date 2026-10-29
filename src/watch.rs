@@ -18,8 +18,10 @@ pub struct Config {
 }
 
 pub fn load() -> Config {
+    let loaded = crate::config::load();
+    crate::clock::prefer(loaded.behaviour.clock);
     Config {
-        loaded: crate::config::load(),
+        loaded,
         script: std::fs::read_to_string(crate::script::path()).ok(),
     }
 }

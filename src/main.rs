@@ -30,6 +30,7 @@ mod bluetooth;
 mod bus;
 mod card;
 mod cards;
+mod clock;
 mod config;
 mod desktop;
 mod icons;
@@ -200,6 +201,7 @@ fn run(open: bool, replace: bool, section: Option<settings::Section>) {
     cards::timers(timer_rx, overlay.clone());
     watch::spawn(overlay.clone(), window.clone());
     textscale::follow(overlay.clone(), window.clone());
+    clock::follow(overlay.clone(), window.clone());
     {
         let (own, window) = (overlay.clone(), window.clone());
         overlay.update(move |c, _| {

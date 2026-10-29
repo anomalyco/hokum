@@ -190,6 +190,8 @@ pub struct Behaviour {
     pub do_not_disturb: bool,
     /// Fetch the release manifest at startup and hourly, and log when a newer version is out.
     pub check_for_updates: bool,
+    /// `{time}`'s format: the desktop's (`auto`), 12-hour or 24-hour.
+    pub clock: crate::clock::Clock,
 }
 
 impl Default for Behaviour {
@@ -202,6 +204,7 @@ impl Default for Behaviour {
             pause_on_hover: true,
             do_not_disturb: false,
             check_for_updates: true,
+            clock: crate::clock::Clock::Auto,
         }
     }
 }

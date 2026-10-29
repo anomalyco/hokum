@@ -13,6 +13,7 @@ behaviour {                  // only here, never in a theme
     pause-on-hover #true
     do-not-disturb #false
     appearance "system"      // system, light, dark
+    clock "auto"             // auto, 12h, 24h
     check-for-updates #true  // offer newer Hokum builds with a card
 }
 
@@ -89,6 +90,7 @@ appearance under Appearance and the rest under Behaviour.
 | `pause-on-hover` | `#true`: timers wait while the pointer is over a card |
 | `do-not-disturb` | `#true`: only critical notifications, and apps whose rule has `interrupt`, show |
 | `appearance` | `system`, `light`, `dark` |
+| `clock` | `{time}` on cards: `12h` (`7:54 PM`), `24h` (`19:54`), or `auto` (the default), which follows Omarchy's bar clock, GNOME's clock setting, or else your locale (`en_US` and other AM/PM locales get 12-hour). A theme can force one with `{time|12h}` or `{time|24h}` |
 | `check-for-updates` | `#true`: fetch the release manifest hourly (30 minutes on dev) and show a card when a different build is out; nothing installs without a click. `#false` turns it off |
 
 ## Tokens and templates

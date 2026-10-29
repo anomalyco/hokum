@@ -46,7 +46,7 @@ pub struct Note {
     pub tag: Option<String>,
     pub resident: bool,
     pub timeout: Timeout,
-    pub time: String,
+    pub time: crate::clock::Stamp,
     /// A template a script picked, by name.
     pub template: Option<String>,
     /// Where the app's icon and the notification's picture come from; decoded on the UI
@@ -86,7 +86,7 @@ impl Note {
             tag: None,
             resident: false,
             timeout: Timeout::Default,
-            time: clock(),
+            time: crate::clock::Stamp::now(),
             template: None,
             icon_src: None,
             image_src: None,
@@ -133,16 +133,6 @@ pub trait Cards: 'static {
     fn hover(&mut self, on: bool);
     /// Card `id` was laid out `height` points tall.
     fn measured(&mut self, _id: u32, _height: f32) {}
-}
-
-pub fn clock() -> String {
-    // SAFETY: localtime_r only writes the struct we pass.
-    unsafe {
-        let t = libc::time(std::ptr::null_mut());
-        let mut tm: libc::tm = std::mem::zeroed();
-        libc::localtime_r(&t, &mut tm);
-        format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
-    }
 }
 
 /// A stable colour per app, so the same sender always reads the same at a glance.

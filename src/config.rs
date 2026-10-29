@@ -812,6 +812,19 @@ mod tests {
     }
 
     #[test]
+    fn clock_is_auto_12h_or_24h() {
+        use crate::clock::Clock;
+        assert_eq!(load_src("theme \"soft\"\n").behaviour.clock, Clock::Auto);
+        let l = load_src("behaviour { clock \"12h\"; }\n");
+        assert!(l.ok() && l.behaviour.clock == Clock::H12);
+        assert_eq!(
+            load_src("behaviour { clock \"24h\"; }\n").behaviour.clock,
+            Clock::H24
+        );
+        assert!(!load_src("behaviour { clock \"am/pm\"; }\n").ok());
+    }
+
+    #[test]
     fn app_rules_keep_styling_written_by_hand() {
         let src =
             "rule app=\"Slack\" {\n    tokens { accent \"#d38be0\" }\n    template \"card\"\n}\n";

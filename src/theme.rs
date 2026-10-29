@@ -12,6 +12,7 @@ use rune::Color;
 use rune_kit::Kit;
 
 use crate::card::{Note, Timeout};
+use crate::clock::Clock;
 use crate::style::{Appearance, Behaviour, Mark, Position};
 
 /// The built-in card, as a template.
@@ -339,7 +340,7 @@ pub enum Part {
 pub const FIELDS: &[&str] = &[
     "app", "source", "context", "summary", "body", "time", "urgency", "value", "id",
 ];
-const FILTERS: &[&str] = &["upper", "lower", "initial", "trim"];
+const FILTERS: &[&str] = &["upper", "lower", "initial", "trim", "12h", "24h"];
 
 impl Interp {
     fn parse(s: &str) -> Result<Interp, String> {
@@ -380,6 +381,12 @@ impl Interp {
                             FILTERS.join(", ")
                         ));
                     }
+                    if field != "time"
+                        && let Some(f) =
+                            filters.iter().find(|f| matches!(f.as_str(), "12h" | "24h"))
+                    {
+                        return Err(format!("`{f}` only formats `{{time}}`"));
+                    }
                     if !text.is_empty() {
                         parts.push(Part::Text(std::mem::take(&mut text)));
                     }
@@ -411,6 +418,8 @@ impl Interp {
                                 .map(|c| c.to_uppercase().collect())
                                 .unwrap_or_default(),
                             "trim" => v.trim().to_owned(),
+                            "12h" => n.time.h12(),
+                            "24h" => n.time.h24(),
                             _ => v,
                         };
                     }
@@ -432,7 +441,7 @@ pub fn field(n: &Note, name: &str) -> String {
         "context" => n.context.clone().unwrap_or_default(),
         "summary" => n.summary.clone(),
         "body" => n.body.clone(),
-        "time" => n.time.clone(),
+        "time" => n.time.show(),
         "urgency" => ["low", "normal", "critical"][n.urgency.min(2) as usize].to_owned(),
         "value" => n
             .value
@@ -600,6 +609,7 @@ pub struct Behave {
     pub pause_on_hover: Option<bool>,
     pub do_not_disturb: Option<bool>,
     pub check_for_updates: Option<bool>,
+    pub clock: Option<Clock>,
 }
 
 impl Behave {
@@ -625,6 +635,9 @@ impl Behave {
         if let Some(v) = self.check_for_updates {
             b.check_for_updates = v;
         }
+        if let Some(v) = self.clock {
+            b.clock = v;
+        }
     }
 
     fn merge(&mut self, top: &Behave) {
@@ -638,7 +651,8 @@ impl Behave {
             show_at_most,
             pause_on_hover,
             do_not_disturb,
-            check_for_updates
+            check_for_updates,
+            clock
         );
     }
 }
@@ -1143,9 +1157,10 @@ impl Parser<'_> {
                 "pause-on-hover" => b.pause_on_hover = flag(self, v),
                 "do-not-disturb" => b.do_not_disturb = flag(self, v),
                 "check-for-updates" => b.check_for_updates = flag(self, v),
+                "clock" => b.clock = self.keyword(node, v, "clock", &Clock::ALL.map(|c| (c.word(), c))),
                 other => self.problem(
                     node,
-                    format!("unknown behaviour `{other}`; use position, appearance, stay, show-at-most, pause-on-hover, do-not-disturb, check-for-updates"),
+                    format!("unknown behaviour `{other}`; use position, appearance, stay, show-at-most, pause-on-hover, do-not-disturb, check-for-updates, clock"),
                 ),
             }
         }
@@ -1806,5 +1821,17 @@ rule app="Spotify" { hide }
         let i = Interp::parse("{source}: {summary|upper} {{x}} {app|initial}").unwrap();
         assert_eq!(i.render(&n), "Slack · #abattoir: DAX {x} S");
         assert!(Interp::parse("{summary|shout}").is_err());
+    }
+
+    #[test]
+    fn time_filters_force_a_clock() {
+        let mut n = Note::new(7, "Slack", "Dax", "hi");
+        n.time = crate::clock::Stamp {
+            hour: 19,
+            minute: 54,
+        };
+        let i = Interp::parse("{time|12h} {time|24h} {time|12h|lower}").unwrap();
+        assert_eq!(i.render(&n), "7:54 PM 19:54 7:54 pm");
+        assert!(Interp::parse("{summary|12h}").is_err());
     }
 }

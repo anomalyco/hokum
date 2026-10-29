@@ -245,12 +245,13 @@ Layout rules worth knowing:
 ### Fields and filters
 
 Text holes: `{app}`, `{source}` (the app, plus ` · channel` when there's a context), `{context}`
-(a Slack channel and the like), `{summary}`, `{body}`, `{time}` (`HH:MM`, when it arrived),
+(a Slack channel and the like), `{summary}`, `{body}`, `{time}` (when it arrived: `19:54` or `7:54 PM`, as the user's `clock` setting says),
 `{urgency}` (`low`, `normal`, `critical`), `{value}` (`62%`), `{id}`.
 
 Filters follow a `|` and chain: `{app|upper}`, `{summary|lower}`, `{app|initial}` (first letter
-or digit, upper case), `{body|trim}`, `{app|initial|lower}`. Write `{{` and `}}` for literal
-braces. Unknown fields and filters are errors.
+or digit, upper case), `{body|trim}`, `{app|initial|lower}`. `{time|12h}` and `{time|24h}` force a clock whatever
+the user's setting (they only work on `time`); leave `{time}` plain unless the design needs one.
+Write `{{` and `}}` for literal braces. Unknown fields and filters are errors.
 
 ### Conditions
 
@@ -303,8 +304,8 @@ Behaviour isn't part of a theme. `behaviour { … }` lives only in `config.kdl`:
 (`"top-right"`, `"top-left"`, `"top-center"`, `"bottom-right"`, `"bottom-left"`,
 `"bottom-center"`), `stay` (seconds),
 `show-at-most` (1 to 20), `pause-on-hover`, `do-not-disturb` and `check-for-updates`
-(`#true`/`#false`) and
-`appearance` (`"system"`, `"light"`, `"dark"`). The settings window writes it, and anything
+(`#true`/`#false`),
+`appearance` (`"system"`, `"light"`, `"dark"`) and `clock` (`"auto"`, `"12h"`, `"24h"`). The settings window writes it, and anything
 unset uses Hokum's defaults (top right, 6 seconds, 5 cards, pause on hover, system appearance).
 A theme should look right in both light and dark, since the user picks.
 
