@@ -12,15 +12,18 @@
 pkgname=hokum-bin
 pkgver=@VERSION@
 pkgrel=1
-pkgdesc='Hokum: a freedesktop notification daemon for Wayland layer-shell compositors'
+pkgdesc='Hokum: a control center for Wayland (notifications, sound, Bluetooth)'
 arch=('x86_64' 'aarch64')
 url='https://hokum.app'
 license=('MIT')
 provides=('hokum' 'notification-daemon')
 conflicts=('hokum')
-# Linked: glibc, libgcc, xkbcommon. Loaded at run time (so namcap calls them
-# unneeded): the Vulkan loader and a driver, and the Wayland client library.
-depends=('glibc' 'libgcc' 'libxkbcommon' 'vulkan-driver' 'vulkan-icd-loader' 'wayland')
+# Linked: glibc, libgcc, xkbcommon, libpipewire. Loaded at run time (so namcap
+# calls them unneeded): the Vulkan loader and a driver, and the Wayland client
+# library.
+depends=('glibc' 'libgcc' 'libxkbcommon' 'libpipewire' 'vulkan-driver' 'vulkan-icd-loader' 'wayland')
+optdepends=('wireplumber: the PipeWire session manager Sound expects'
+            'bluez: the Bluetooth daemon the Bluetooth section controls')
 options=('!strip' '!debug')
 install=hokum-bin.install
 source=(

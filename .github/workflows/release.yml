@@ -102,10 +102,10 @@ jobs:
 
   # Both architectures build natively on Ubuntu 24.04, so the executable and
   # packages need glibc 2.39 (Ubuntu 24.04, Debian 13, Fedora 40, Arch) rather
-  # than a rolling distribution's newest. Hokum links only glibc, libgcc_s,
-  # and xkbcommon and loads Vulkan and Wayland at run time. Mesa's lavapipe
-  # gives the headless smoke render in scripts/build-linux.sh a Vulkan
-  # device.
+  # than a rolling distribution's newest. Hokum links glibc, libgcc_s,
+  # xkbcommon and libpipewire-0.3 (bindgen needs clang and the PipeWire
+  # headers) and loads Vulkan and Wayland at run time. Mesa's lavapipe gives
+  # the headless smoke render in scripts/build-linux.sh a Vulkan device.
   linux-x64:
     name: Linux x86_64
     needs: plan
@@ -130,7 +130,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y file jq libxkbcommon-dev libvulkan1 mesa-vulkan-drivers
+          sudo apt-get install -y file jq pkg-config clang libclang-dev libpipewire-0.3-dev libspa-0.2-dev libxkbcommon-dev libvulkan1 mesa-vulkan-drivers
           curl -fsSL --retry 3 -o "$RUNNER_TEMP/nfpm.tar.gz" \
             "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/$NFPM_ARCHIVE"
           echo "$NFPM_SHA256  $RUNNER_TEMP/nfpm.tar.gz" | sha256sum -c -

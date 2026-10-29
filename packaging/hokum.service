@@ -1,5 +1,5 @@
 [Unit]
-Description=Hokum notification daemon (org.freedesktop.Notifications)
+Description=Hokum: notifications (org.freedesktop.Notifications), sound and Bluetooth
 Documentation=https://hokum.app
 PartOf=graphical-session.target
 After=graphical-session.target

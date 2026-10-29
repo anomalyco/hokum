@@ -1,11 +1,20 @@
 [Desktop Entry]
 Type=Application
 Name=Hokum
-GenericName=Notification Settings
-Comment=Style and configure your notifications
+GenericName=Control Center
+Comment=Notifications, sound and Bluetooth
 Exec=hokum
 Icon=preferences-desktop-notification
 Terminal=false
 StartupNotify=true
 Categories=Settings;DesktopSettings;
-Keywords=notifications;notification;daemon;do not disturb;
+Keywords=notifications;notification;daemon;do not disturb;sound;volume;audio;microphone;pipewire;bluetooth;
+Actions=sound;bluetooth;
+
+[Desktop Action sound]
+Name=Sound
+Exec=hokum sound
+
+[Desktop Action bluetooth]
+Name=Bluetooth
+Exec=hokum bluetooth

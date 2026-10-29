@@ -898,18 +898,6 @@ fn module(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> El {
         Section::Bluetooth => (Section::Bluetooth, "Bluetooth", s.loaded.modules.bluetooth, &s.bluetooth_error, &crate::bluetooth::ui::glyphs::BLUETOOTH),
         _ => (Section::Sound, "Sound", s.loaded.modules.sound, &s.sound_error, &crate::sound::ui::glyphs::SPEAKER),
     };
-    let switch = Switch::new(on)
-        .label(title)
-        .hide_label()
-        .on_toggle(move |s: &mut Ui| {
-            let on = match section {
-                Section::Bluetooth => s.loaded.modules.bluetooth,
-                _ => s.loaded.modules.sound,
-            };
-            s.set_module(section, !on)
-        })
-        .build(k)
-        .key("module-switch");
     let header = col()
         .key("header")
         .w_full()
@@ -917,15 +905,32 @@ fn module(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> El {
         .pt(20.0)
         .pb(14.0)
         .gap(8.0)
-        .child(row().key("title-row").w_full().h(28.0).gap(12.0).center_y().child(page_title(k, title)).child(el().key("fill").grow(1.0)).child(switch))
+        .child(row().key("title-row").w_full().h(28.0).center_y().child(page_title(k, title)))
         .children(problems(s, k));
+    // Turning a module off is rare: it sits at the end of its advanced page.
+    let toggle = |label: String, variant: ButtonVariant| {
+        Button::new(label)
+            .variant(variant)
+            .control_size(ControlSize::Regular)
+            .on_press(move |s: &mut Ui| s.set_module(section, !on))
+            .build(k)
+            .key("module-toggle")
+    };
+    let advanced = match section {
+        Section::Bluetooth => s.bluetooth.page != crate::bluetooth::ui::Page::Main,
+        _ => s.sound.page != crate::sound::ui::Page::Main,
+    };
     let body = match (on, error) {
-        (false, _) => quiet(k, glyph, None),
+        (false, _) => quiet(k, glyph, None).child(toggle(format!("Turn on {title}"), ButtonVariant::Neutral)),
         (true, Some(e)) => quiet(k, glyph, Some(e.clone())),
-        (true, None) => match section {
-            Section::Bluetooth => crate::bluetooth::ui::section(&s.bluetooth, k, layer),
-            _ => crate::sound::ui::section(&s.sound, k, layer),
-        },
+        (true, None) => {
+            let body = match section {
+                Section::Bluetooth => crate::bluetooth::ui::section(&s.bluetooth, k, layer),
+                _ => crate::sound::ui::section(&s.sound, k, layer),
+            };
+            let off = advanced.then(|| row().key("module-off").w_full().px(12.0).child(toggle(format!("Turn off {title}"), ButtonVariant::GhostMuted)));
+            col().key("module-body").w_full().child(body).children(off)
+        }
     };
     let column = col().key(format!("module-{}", section.word())).w(MODULE).pb(32.0).child(body);
     col()

@@ -15,8 +15,9 @@ vendor: Anomaly
 homepage: https://hokum.app
 license: MIT
 description: |-
-  Hokum: a freedesktop notification daemon for Wayland layer-shell compositors.
-  Notifications that look like they belong on a computer from this decade.
+  Hokum: a control center for Wayland compositors. Notifications (a freedesktop
+  notification daemon for layer-shell compositors), sound on PipeWire and
+  Bluetooth on BlueZ, drawn with Rune.
 contents:
   - src: hokum
     dst: /usr/bin/hokum
@@ -39,27 +40,38 @@ contents:
     file_info:
       mode: 0644
 overrides:
-  # Linked: glibc, libgcc_s, xkbcommon. Loaded at run time: the Vulkan loader
-  # and the Wayland client library.
+  # Linked: glibc, libgcc_s, xkbcommon, libpipewire-0.3. Loaded at run time:
+  # the Vulkan loader and the Wayland client library. PipeWire (with a session
+  # manager) and BlueZ are what Sound and Bluetooth control; without them those
+  # sections stay quiet.
   deb:
     depends:
       - libc6 (>= 2.39)
       - libgcc-s1
       - libxkbcommon0
+      - libpipewire-0.3-0t64 | libpipewire-0.3-0
       - libvulkan1
       - libwayland-client0
     recommends:
       - mesa-vulkan-drivers
+      - pipewire
+      - wireplumber
+      - bluez
     provides:
       - notification-daemon
   # Library names, so Fedora and openSUSE resolve them to their own packages.
   rpm:
     depends:
       - libxkbcommon.so.0()(64bit)
+      - libpipewire-0.3.so.0()(64bit)
       - libvulkan.so.1()(64bit)
       - libwayland-client.so.0()(64bit)
+    recommends:
+      - pipewire
+      - wireplumber
+      - bluez
     provides:
       - desktop-notification-daemon
 rpm:
   group: User Interface/Desktops
-  summary: Hokum notification daemon by Anomaly
+  summary: Hokum control center (notifications, sound, Bluetooth) by Anomaly

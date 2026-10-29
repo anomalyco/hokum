@@ -55,5 +55,7 @@ temporary=$(mktemp -d)
 trap 'rm -rf "$temporary"' EXIT HUP INT TERM
 XDG_CONFIG_HOME="$temporary" "$executable" service --snap "$temporary/cards.png" --scene demo >&2
 XDG_CONFIG_HOME="$temporary" "$executable" --snap "$temporary/settings.png" --scene hokum >&2
-file "$temporary/cards.png" "$temporary/settings.png" | grep -c 'PNG image data' | grep -qx 2
+XDG_CONFIG_HOME="$temporary" "$executable" --snap "$temporary/sound.png" --scene sound >&2
+XDG_CONFIG_HOME="$temporary" "$executable" --snap "$temporary/panel.png" --scene panel --size 364x440 >&2
+file "$temporary/cards.png" "$temporary/settings.png" "$temporary/sound.png" "$temporary/panel.png" | grep -c 'PNG image data' | grep -qx 4
 echo "$executable"
