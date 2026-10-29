@@ -131,6 +131,8 @@ pub trait Cards: 'static {
     fn activate(&mut self, id: u32);
     /// The pointer entered or left the stack (cards and the gaps between them).
     fn hover(&mut self, on: bool);
+    /// Card `id` was laid out `height` points tall.
+    fn measured(&mut self, _id: u32, _height: f32) {}
 }
 
 pub fn clock() -> String {

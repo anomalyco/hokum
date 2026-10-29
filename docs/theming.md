@@ -93,6 +93,11 @@ appearance under Appearance and the rest under Behaviour.
 
 ## Tokens and templates
 
+Text follows the desktop's text scale on top of `font-size`: GNOME's `text-scaling-factor`
+(Large Text), Plasma's font size over its default 10 pt, or Omarchy's `[font] base-size` over its
+default 12. Stock desktops scale by 1, and changes apply live. `font-size` itself stays a
+config.kdl setting, in points (logical pixels).
+
 `tokens { ... }` sets the look of every card (`width`, `radius`, `padding`, `fill`, `text`,
 `border`, `accent`, `shadow`, `mark`, `enter` and more); `tokens "dark" { ... }` and
 `tokens "light" { ... }` set them for one appearance. `template "card" { ... }` lays out a

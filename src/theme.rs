@@ -168,6 +168,10 @@ pub fn deep(c: Color, extra: f32) -> Color {
     at((l - extra).max(0.15))
 }
 
+/// The smallest and largest text a card draws, in points.
+const MIN_TEXT: f32 = 6.0;
+const MAX_TEXT: f32 = 48.0;
+
 /// Every value a card's look is made of, resolved for one card.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tokens {
@@ -192,6 +196,10 @@ pub struct Tokens {
     pub mark: Mark,
     pub enter: Enter,
     pub motion: (f32, f32),
+    /// What the card's other sizes (a template's `size=`, buttons, the close button) are
+    /// multiplied by: `font-size` over the size the theme was laid out at, times the desktop's
+    /// text scale. `font-size` itself already has both.
+    pub scale: f32,
 }
 
 /// Where every theme starts: Soft's values.
@@ -218,6 +226,7 @@ impl Default for Tokens {
             mark: Mark::Icon,
             enter: Enter::Slide,
             motion: (0.38, 0.12),
+            scale: 1.0,
         }
     }
 }
@@ -671,6 +680,9 @@ pub struct Theme {
     pub light: Overrides,
     pub templates: HashMap<String, Arc<Vec<Node>>>,
     pub rules: Vec<Rule>,
+    /// The `font-size` its templates were laid out at, when it isn't the theme's own (config.kdl
+    /// may set another over its theme).
+    pub design_size: Option<f32>,
 }
 
 /// One problem in a theme file, with where it is.
@@ -715,6 +727,7 @@ impl Theme {
             light: Overrides::default(),
             templates: HashMap::new(),
             rules: Vec::new(),
+            design_size: None,
         }
     }
 
@@ -729,6 +742,7 @@ impl Theme {
         t.templates
             .extend(top.templates.iter().map(|(k, v)| (k.clone(), v.clone())));
         t.rules.extend(top.rules.iter().cloned());
+        t.design_size = top.design_size.or(t.design_size);
         t
     }
 
@@ -770,7 +784,13 @@ impl Theme {
     }
 
     pub fn look(&self, n: &Note, dark: bool) -> Look {
+        self.look_at(n, dark, crate::textscale::get())
+    }
+
+    /// The look for `n` at the desktop's text scale `desktop`.
+    pub fn look_at(&self, n: &Note, dark: bool, desktop: f32) -> Look {
         let mut tokens = self.base(dark);
+        let design = self.design_size.unwrap_or(tokens.font_size).max(1.0);
         let mut template = n.template.clone().unwrap_or_else(|| "card".into());
         if n.urgency >= 2 {
             // Critical cards stand out unless a rule says otherwise.
@@ -783,6 +803,14 @@ impl Theme {
                 template = t.clone();
             }
         }
+        // The whole card scales together, so a theme keeps its proportions at any size. Text
+        // stays readable and inside a card's width whatever font-size and the desktop combine
+        // to (GNOME's largest, 3 × 13, is 39).
+        let size = (tokens.font_size * desktop).clamp(MIN_TEXT, MAX_TEXT);
+        tokens.scale = size / design;
+        tokens.font_size = size;
+        // The mark and the indent past it grow with the text beside them.
+        tokens.icon_size *= tokens.scale;
         Look {
             tokens,
             template: self.template(&template),

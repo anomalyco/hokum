@@ -41,6 +41,7 @@ mod settings;
 mod sound;
 mod style;
 mod template;
+mod textscale;
 mod theme;
 mod update;
 mod watch;
@@ -198,6 +199,7 @@ fn run(open: bool, replace: bool, section: Option<settings::Section>) {
     let wiring = modules::Wiring::new(window.clone(), panel, overlay.clone());
     cards::timers(timer_rx, overlay.clone());
     watch::spawn(overlay.clone(), window.clone());
+    textscale::follow(overlay.clone(), window.clone());
     {
         let (own, window) = (overlay.clone(), window.clone());
         overlay.update(move |c, _| {

@@ -2,6 +2,7 @@
 //! state. It shows for the first card, so it opens on the output focused then, and hides once
 //! the last card has left.
 
+use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
@@ -60,6 +61,10 @@ pub struct Ui {
     pub window: Option<AppHandle<crate::settings::Ui>>,
     shown: bool,
     hide_at: Option<Instant>,
+    /// Each card's height as last laid out, to show only the cards that fit.
+    heights: HashMap<u32, f32>,
+    /// The overlay's height: `HEIGHT`, or taller to hold a card that is.
+    overlay_h: f32,
 }
 
 impl Ui {
@@ -78,6 +83,8 @@ impl Ui {
             window: None,
             shown: false,
             hide_at: None,
+            heights: HashMap::new(),
+            overlay_h: HEIGHT,
         };
         ui.configure(config);
         ui
@@ -124,7 +131,10 @@ impl Ui {
     pub fn apply(&mut self, settings: Behaviour) {
         if let Some(h) = &self.handle {
             h.set_placement(Some(placement(&settings)));
-            h.resize(size(&self.theme, self.dark(), settings.position));
+            h.resize((
+                size(&self.theme, self.dark(), settings.position).0,
+                self.overlay_h,
+            ));
         }
         if !settings.pause_on_hover {
             self.hover(false);
@@ -211,12 +221,34 @@ impl Ui {
     pub fn close(&mut self, id: u32, reason: Reason) {
         let before = self.notes.len();
         self.notes.retain(|n| n.id != id);
+        if self.heights.remove(&id).is_some() {
+            self.fit_overlay();
+        }
         if self.notes.len() != before {
             if id == crate::update::ID {
                 crate::update::closed(reason);
             }
             let _ = self.out.send(Out::Closed(id, reason));
             self.reschedule();
+        }
+    }
+
+    /// Grows the overlay to hold a card taller than it (very large text, many buttons), and
+    /// back to `HEIGHT` when none is, so a card is never cut off.
+    fn fit_overlay(&mut self) {
+        let shown = self.notes.iter().take(self.settings.max_shown.max(1));
+        let tallest = shown
+            .filter_map(|n| self.heights.get(&n.id))
+            .fold(0.0f32, |a, b| a.max(*b));
+        let want = HEIGHT.max((tallest + 2.0 * GUTTER).ceil());
+        if (want - self.overlay_h).abs() >= 1.0 {
+            self.overlay_h = want;
+            if let Some(h) = &self.handle {
+                h.resize((
+                    size(&self.theme, self.dark(), self.settings.position).0,
+                    want,
+                ));
+            }
         }
     }
 
@@ -335,6 +367,18 @@ impl Cards for Ui {
         self.close(id, Reason::Dismissed);
     }
 
+    fn measured(&mut self, id: u32, height: f32) {
+        if self
+            .heights
+            .get(&id)
+            .is_some_and(|h| (h - height).abs() < 0.5)
+        {
+            return;
+        }
+        self.heights.insert(id, height);
+        self.fit_overlay();
+    }
+
     fn invoke(&mut self, id: u32, key: &str) {
         let desktop = self
             .notes
@@ -429,10 +473,44 @@ fn placement(s: &Behaviour) -> OverlayPlacement {
     }
 }
 
-/// The stack of cards for `notes` in a corner (or the middle of an edge) of its parent, as the
-/// overlay and the settings preview both draw it. Top stacks grow downward, bottom ones upward.
+/// How many of `notes` (newest first) to show: at most `max_shown`, and only as many as fit in
+/// `room` points with `spacing` between them and, when some must wait, the `pill` under them.
+/// A card not laid out yet counts as fitting; the first always shows.
+pub fn fitting(
+    notes: &[Note],
+    max_shown: usize,
+    heights: &HashMap<u32, f32>,
+    spacing: f32,
+    room: f32,
+    pill: f32,
+) -> usize {
+    let take = |room: f32| {
+        let (mut used, mut n) = (0.0, 0);
+        for note in notes.iter().take(max_shown.max(1)) {
+            let add =
+                heights.get(&note.id).copied().unwrap_or(0.0) + if n == 0 { 0.0 } else { spacing };
+            if n > 0 && used + add > room {
+                break;
+            }
+            used += add;
+            n += 1;
+        }
+        n
+    };
+    let n = take(room);
+    if n < notes.len() {
+        take(room - pill - spacing).max(1)
+    } else {
+        n
+    }
+}
+
+/// The stack of the first `limit` of `notes` in a corner (or the middle of an edge) of its
+/// parent, as the overlay and the settings preview both draw it. Top stacks grow downward,
+/// bottom ones upward.
 pub fn stack<S: Cards>(
     notes: &[Note],
+    limit: usize,
     s: &Behaviour,
     theme: &Theme,
     k: &Kit,
@@ -442,10 +520,11 @@ pub fn stack<S: Cards>(
     let between = base.spacing;
     let side = s.position.side();
     let bottom = s.position.bottom();
-    let shown = notes
-        .iter()
-        .take(s.max_shown.max(1))
-        .map(|n| card::<S>(n, theme, k, s.position));
+    let shown = notes.iter().take(limit.max(1)).map(|n| {
+        let id = n.id;
+        card::<S>(n, theme, k, s.position)
+            .on_layout(move |st: &mut S, r: [f32; 4]| st.measured(id, r[3]))
+    });
     let cards: Vec<El> = if bottom {
         shown.rev().collect()
     } else {
@@ -491,13 +570,18 @@ pub fn stack<S: Cards>(
 
 fn more(hidden: usize, k: &Kit) -> El {
     let c = &k.c;
+    // It sits under the cards, so it grows with the desktop's text as they do.
+    let scale = crate::textscale::get();
+    let mut font = k.ty.small_medium;
+    font.size *= scale;
+    font.line_height *= scale;
     row()
         .key("more")
         .role("button")
         .label("Clear all")
-        .h(28.0)
-        .px(12.0)
-        .gap(8.0)
+        .h((28.0 * scale).round())
+        .px(12.0 * scale)
+        .gap(8.0 * scale)
         .center_y()
         .radius(999.0)
         .fill(c.layer_01)
@@ -510,26 +594,36 @@ fn more(hidden: usize, k: &Kit) -> El {
         .child(
             text(format!("{hidden} more"))
                 .key("count")
-                .font(k.ty.small_medium)
+                .font(font)
                 .color(c.text_muted),
         )
-        .child(
-            text("Clear all")
-                .key("clear")
-                .font(k.ty.small_medium)
-                .color(c.text_base),
-        )
+        .child(text("Clear all").key("clear").font(font).color(c.text_base))
         .transition(Transition::opacity().combined(Transition::scale(0.9)))
 }
 
 pub fn view(s: &Ui, _: &mut Cx<Ui>) -> El {
     let k = rune_theme_opencode::kit(s.dark());
-    let hidden = s.notes.len().saturating_sub(s.settings.max_shown.max(1));
+    let pill_h = (28.0 * crate::textscale::get()).round();
+    let spacing = s.theme.base(s.dark()).spacing;
+    let shown = fitting(
+        &s.notes,
+        s.settings.max_shown,
+        &s.heights,
+        spacing,
+        // Below the gutter the stack may reach the overlay's edge, as it always could.
+        s.overlay_h - GUTTER,
+        pill_h,
+    );
+    let hidden = s.notes.len().saturating_sub(shown);
     let pill = (hidden > 0).then(|| more(hidden, k));
-    el().key("root")
-        .w_full()
-        .h_full()
-        .child(stack::<Ui>(&s.notes, &s.settings, &s.theme, k, pill))
+    el().key("root").w_full().h_full().child(stack::<Ui>(
+        &s.notes,
+        shown,
+        &s.settings,
+        &s.theme,
+        k,
+        pill,
+    ))
 }
 
 pub fn overlay(config: &Config) -> rune::ConfiguredOverlay<Ui> {
@@ -701,6 +795,55 @@ mod tests {
         ui.settings = Behaviour::default();
         ui.theme = crate::theme::resolve("").unwrap();
         (ui, rx)
+    }
+
+    #[test]
+    fn only_cards_that_fit_show_and_the_rest_wait_behind_the_pill() {
+        let notes: Vec<Note> = (1..=5).map(|i| Note::new(i, "App", "s", "b")).collect();
+        let h = |v: &[(u32, f32)]| v.iter().copied().collect::<HashMap<u32, f32>>();
+        // 5 cards of 100 with 10 between fit in 600 when nothing waits.
+        assert_eq!(
+            fitting(
+                &notes,
+                5,
+                &h(&[(1, 100.), (2, 100.), (3, 100.), (4, 100.), (5, 100.)]),
+                10.0,
+                600.0,
+                28.0
+            ),
+            5
+        );
+        // At 200 each, 3 fit in 784 with the pill under them (3 × 200 + 2 × 10 + 10 + 28 = 658).
+        let big = h(&[(1, 200.), (2, 200.), (3, 200.), (4, 200.), (5, 200.)]);
+        assert_eq!(fitting(&notes, 5, &big, 10.0, 784.0, 28.0), 3);
+        // show-at-most still caps it.
+        assert_eq!(fitting(&notes, 2, &big, 10.0, 784.0, 28.0), 2);
+        // A card taller than the room still shows (the overlay grows for it).
+        assert_eq!(fitting(&notes, 5, &h(&[(1, 2000.)]), 10.0, 784.0, 28.0), 1);
+        // Cards not laid out yet count as fitting.
+        assert_eq!(fitting(&notes, 5, &HashMap::new(), 10.0, 784.0, 28.0), 5);
+    }
+
+    #[test]
+    fn bigger_text_gets_fewer_lines() {
+        use crate::template::fewer_lines;
+        assert_eq!(
+            (
+                fewer_lines(8, 1.0),
+                fewer_lines(8, 0.5),
+                fewer_lines(8, 2.0),
+                fewer_lines(8, 3.0)
+            ),
+            (8, 8, 4, 3)
+        );
+        assert_eq!(
+            (
+                fewer_lines(1, 3.0),
+                fewer_lines(2, 3.0),
+                fewer_lines(3, 1.17)
+            ),
+            (1, 2, 3)
+        );
     }
 
     #[test]

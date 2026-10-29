@@ -97,6 +97,9 @@ pub struct Ui {
     icons: HashMap<String, Option<Image>>,
     /// The preview's cards and the gallery's card, with icons decoded by `cache`.
     samples: Vec<Note>,
+    /// The preview's cards' heights and the preview's own, so it shows only cards that fit.
+    preview_heights: HashMap<u32, f32>,
+    preview_room: f32,
     tile_note: Note,
     cache: Option<rune::ImageCache>,
     pub section: Section,
@@ -117,6 +120,9 @@ impl Cards for Ui {
     fn invoke(&mut self, _: u32, _: &str) {}
     fn activate(&mut self, _: u32) {}
     fn hover(&mut self, _: bool) {}
+    fn measured(&mut self, id: u32, height: f32) {
+        self.preview_heights.insert(id, height);
+    }
 }
 
 impl Ui {
@@ -1559,8 +1565,17 @@ fn preview(s: &Ui, k: &Kit, window: &Kit) -> El {
                 .radius(14.0)
                 .gradient(backdrop.0, backdrop.1)
                 .clip_soft(0.0)
+                .on_layout(|s: &mut Ui, r: [f32; 4]| s.preview_room = r[3])
                 .child(stack::<Ui>(
                     &s.samples,
+                    crate::cards::fitting(
+                        &s.samples,
+                        s.loaded.behaviour.max_shown,
+                        &s.preview_heights,
+                        s.loaded.theme.base(k.dark).spacing,
+                        s.preview_room - crate::cards::GUTTER,
+                        0.0,
+                    ),
                     &s.loaded.behaviour,
                     &s.loaded.theme,
                     k,
@@ -1625,6 +1640,8 @@ pub fn init() -> Ui {
         apps: Vec::new(),
         icons: HashMap::new(),
         samples: samples(),
+        preview_heights: HashMap::new(),
+        preview_room: f32::MAX,
         tile_note: tile_note(),
         cache: None,
         section: Section::Notifications,

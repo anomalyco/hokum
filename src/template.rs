@@ -79,6 +79,16 @@ pub fn line(size: f32) -> f32 {
     ((size * 1.5) / 2.0).round() * 2.0
 }
 
+/// A text's line limit `n` at `scale`: fewer lines for bigger text (never under 2, or under `n`
+/// for one line), the same at or below the theme's size.
+pub fn fewer_lines(n: usize, scale: f32) -> usize {
+    if n > 1 && scale > 1.0 {
+        ((n as f32 / scale).round() as usize).clamp(2, n)
+    } else {
+        n
+    }
+}
+
 /// The nearest even size, so a glyph centres on whole pixels inside an even box.
 fn even(x: f32) -> f32 {
     (x / 2.0).round() * 2.0
@@ -220,12 +230,15 @@ fn app_icon(cx: &Ctx, size: f32, radius: f32) -> El {
 
 fn badge(cx: &Ctx, p: &Props) -> Option<El> {
     let t = cx.t;
-    let size = p.size.unwrap_or(t.icon_size);
+    let size = p.size.map_or(t.icon_size, |s| s * t.scale);
     let radius = p.radius.unwrap_or(t.badge_radius);
     match t.mark {
         Mark::Letter => Some(letter(cx, size, radius)),
         Mark::Icon => Some(app_icon(cx, size, radius)),
-        Mark::Dot => Some(el().key("dot").size(8.0, 8.0).radius(4.0).fill(cx.accent)),
+        Mark::Dot => {
+            let d = even(8.0 * t.scale);
+            Some(el().key("dot").size(d, d).radius(d / 2.0).fill(cx.accent))
+        }
         Mark::Stripe | Mark::None => None,
     }
 }
@@ -255,7 +268,8 @@ fn label<S: Cards>(cx: &Ctx, n: &Node, in_row: bool) -> Vec<El> {
             if content.is_empty() {
                 return Vec::new();
             }
-            let size = props.size.unwrap_or(t.font_size);
+            // A template's own sizes are at the theme's font-size; they scale with the card's.
+            let size = props.size.map_or(t.font_size, |s| s * t.scale);
             let weight = if props.title {
                 t.title_weight
             } else {
@@ -270,7 +284,12 @@ fn label<S: Cards>(cx: &Ctx, n: &Node, in_row: bool) -> Vec<El> {
             let mut e = text(content).font(style).color(cx.ink(color));
             // In a column text wraps across the width; in a row it keeps its own width (one
             // line) unless it grows into the row's free space.
-            let lines = props.lines.or(in_row.then_some(1));
+            // Bigger text gets fewer lines, so a card's text keeps about the height it has at
+            // the theme's size and ends in an ellipsis rather than running off the stack.
+            let lines = props
+                .lines
+                .map(|n| fewer_lines(n, t.scale))
+                .or(in_row.then_some(1));
             e = match lines {
                 Some(1) => e.truncate(),
                 Some(n) => e.wrap().max_lines(n),
@@ -291,14 +310,14 @@ fn label<S: Cards>(cx: &Ctx, n: &Node, in_row: bool) -> Vec<El> {
         Node::Badge { props } => badge(cx, props).into_iter().collect(),
         Node::Icon { props } => vec![app_icon(
             cx,
-            props.size.unwrap_or(t.icon_size),
+            props.size.map_or(t.icon_size, |s| s * t.scale),
             props.radius.unwrap_or(t.badge_radius),
         )],
         Node::Image { props } => match &cx.n.image {
             Some(img) => {
                 let (w, h) = (
-                    props.width.or(props.size).unwrap_or(44.0),
-                    props.height.or(props.size).unwrap_or(44.0),
+                    props.width.or(props.size).unwrap_or(44.0) * t.scale,
+                    props.height.or(props.size).unwrap_or(44.0) * t.scale,
                 );
                 vec![
                     el().key("image")
@@ -351,7 +370,7 @@ fn label<S: Cards>(cx: &Ctx, n: &Node, in_row: bool) -> Vec<El> {
             }
             // Buttons take the theme's font, text colours and corners: the first is filled, the
             // rest are quiet.
-            let size = (t.font_size - 1.0).max(10.0);
+            let size = (t.font_size - t.scale).max(10.0 * t.scale);
             let style = TextStyle {
                 family: family(t.font),
                 ..TextStyle::new(size, 550.0).lh(line(size))
@@ -364,8 +383,8 @@ fn label<S: Cards>(cx: &Ctx, n: &Node, in_row: bool) -> Vec<El> {
                     .key(format!("action-{i}"))
                     .role("button")
                     .label(label.clone())
-                    .h(26.0)
-                    .px(10.0)
+                    .h(even(26.0 * t.scale))
+                    .px(10.0 * t.scale)
                     .center_y()
                     .radius(radius)
                     .hover(k.c.hover)
@@ -390,7 +409,7 @@ fn label<S: Cards>(cx: &Ctx, n: &Node, in_row: bool) -> Vec<El> {
             vec![r]
         }
         Node::Close { props } => {
-            let size = props.size.unwrap_or(22.0);
+            let size = even(props.size.unwrap_or(22.0) * t.scale);
             let glyph = even(size * 0.64);
             let color = props.color.as_ref().unwrap_or(&t.faint);
             vec![

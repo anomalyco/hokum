@@ -82,6 +82,9 @@ values for one appearance and apply after the plain block (across the whole chai
 theme's `tokens "dark"` beats a plain `tokens` higher up; override in the same kind of block).
 Anything unset keeps the value from below, ultimately the default.
 
+Sizes here and in templates are points: logical pixels, like CSS `px`, so `font-size 13` is
+13 pixels at a scale of 1. A desktop's "11 pt" is about 14.7 of them.
+
 | Token | Value | Default | What it does |
 |---|---|---|---|
 | `width` | points | `360` | Card width (also the overlay's width) |
@@ -92,7 +95,7 @@ Anything unset keeps the value from below, ultimately the default.
 | `badge-radius` | points | `7` | Corner radius of badges and icons |
 | `icon-size` | points | `20` | Badge and icon size |
 | `font` | `"sans"`, `"mono"` | `"sans"` | Typeface for all text: Inter or IBM Plex Mono. Other names fall back to Inter |
-| `font-size` | points | `13` | Default text size |
+| `font-size` | points | `13` | Text size. The card's other sizes (`size=` on text, buttons, `close`) scale with it, and the desktop's text scale multiplies it (see below) |
 | `title-weight` | 100 to 900 | `550` | The weight `weight="title"` uses |
 | `fill` | colour, or two colours | `"layer"` | Card background; two colours are a top-to-bottom gradient |
 | `text` | colour | `"text"` | Main text colour (templates' `color="text"`) |
@@ -232,6 +235,9 @@ Layout rules worth knowing:
   `progress` is 6 high on a track of the `text` colour at 16%.
 - Action buttons are 26 points high and take the card's font, `font-size - 1` and a radius of
   `radius × 0.6` (2 to 8).
+- A template's sizes are at the theme's own `font-size`. When config.kdl or a rule sets another,
+  or the desktop's text is bigger, text sizes, buttons and `close` scale with it, so `text
+  "{time}" size=11` stays in proportion to the title.
 - A row's or column's `fill` doesn't clip to the card's corners. To fill a strip edge to edge,
   give the card a small `padding` and the strip a `radius` of the card's radius minus that
   padding (see Ticket below).

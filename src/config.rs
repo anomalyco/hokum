@@ -78,6 +78,11 @@ fn load_src(src: &str) -> Loaded {
         }
     };
     let mut theme = base.merge(&own);
+    // The theme's templates were laid out at its own font-size, not the config's.
+    theme.design_size = Some(
+        base.design_size
+            .unwrap_or_else(|| base.base(false).font_size),
+    );
     theme.id = base.id.clone();
     theme.name = base.name.clone();
     problems.extend(crate::theme::missing_templates(&own.rules, &theme));
@@ -655,6 +660,53 @@ pub fn app_rules(own: &Theme) -> (Vec<(String, AppRule)>, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_whole_card_scales_from_font_size_and_the_desktop() {
+        let n = crate::card::Note::new(1, "Slack", "Dax", "ship it");
+        let close = |a: f32, b: f32| (a - b).abs() < 0.001;
+        // Stock: the theme's own size, nothing scaled.
+        let stock = load_src("theme \"soft\"\n")
+            .theme
+            .look_at(&n, false, 1.0)
+            .tokens;
+        assert_eq!((stock.font_size, stock.scale), (13.0, 1.0));
+        // config.kdl's font-size over the theme's 13: the template's own sizes follow.
+        let bigger = load_src("theme \"soft\"\ntokens { font-size 15; }\n")
+            .theme
+            .look_at(&n, false, 1.0)
+            .tokens;
+        assert!(close(bigger.font_size, 15.0) && close(bigger.scale, 15.0 / 13.0));
+        // A theme laid out at another size keeps its proportions: Terminal is 12 on its own.
+        let terminal = load_src("theme \"terminal\"\n")
+            .theme
+            .look_at(&n, false, 1.0)
+            .tokens;
+        assert_eq!((terminal.font_size, terminal.scale), (12.0, 1.0));
+        // The desktop's text scale multiplies both.
+        let large = load_src("theme \"soft\"\ntokens { font-size 15; }\n")
+            .theme
+            .look_at(&n, false, 1.25)
+            .tokens;
+        assert!(close(large.font_size, 18.75) && close(large.scale, 1.25 * 15.0 / 13.0));
+        // Absurd combinations stay readable and inside the card.
+        let tiny = load_src("theme \"soft\"\ntokens { font-size 6; }\n")
+            .theme
+            .look_at(&n, false, 0.5)
+            .tokens;
+        assert!(close(tiny.font_size, 6.0) && close(tiny.scale, 6.0 / 13.0));
+        let huge = load_src("theme \"soft\"\ntokens { font-size 24; }\n")
+            .theme
+            .look_at(&n, false, 3.0)
+            .tokens;
+        assert!(close(huge.font_size, 48.0) && close(huge.scale, 48.0 / 13.0));
+        // A rule's font-size for one app scales that card the same way.
+        let rule = load_src("theme \"soft\"\nrule app=\"Slack\" { tokens { font-size 16; } }\n")
+            .theme
+            .look_at(&n, false, 1.0)
+            .tokens;
+        assert!(close(rule.font_size, 16.0) && close(rule.scale, 16.0 / 13.0));
+    }
 
     fn edit(src: &str) -> Edit {
         Edit {
