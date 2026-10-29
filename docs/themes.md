@@ -294,7 +294,8 @@ the user's config; the settings window manages `rule app="…"` blocks there.
 ## Behaviour
 
 Behaviour isn't part of a theme. `behaviour { … }` lives only in `config.kdl`: `position`
-(`"top-right"`, `"top-left"`, `"bottom-right"`, `"bottom-left"`), `stay` (seconds),
+(`"top-right"`, `"top-left"`, `"top-center"`, `"bottom-right"`, `"bottom-left"`,
+`"bottom-center"`), `stay` (seconds),
 `show-at-most` (1 to 20), `pause-on-hover`, `do-not-disturb` and `check-for-updates`
 (`#true`/`#false`) and
 `appearance` (`"system"`, `"light"`, `"dark"`). The settings window writes it, and anything

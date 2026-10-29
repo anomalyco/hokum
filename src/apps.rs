@@ -14,7 +14,13 @@ fn list() -> &'static Mutex<Vec<String>> {
     static APPS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
     APPS.get_or_init(|| {
         let text = std::fs::read_to_string(path()).unwrap_or_default();
-        Mutex::new(text.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_owned).collect())
+        Mutex::new(
+            text.lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(str::to_owned)
+                .collect(),
+        )
     })
 }
 

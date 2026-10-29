@@ -12,19 +12,35 @@ use std::sync::{Mutex, OnceLock};
 pub enum Source {
     File(PathBuf),
     /// Straight-alpha sRGB RGBA8, as the spec's `image-data` hint carries (after conversion).
-    Rgba { width: u32, height: u32, bytes: std::sync::Arc<[u8]> },
+    Rgba {
+        width: u32,
+        height: u32,
+        bytes: std::sync::Arc<[u8]>,
+    },
 }
 
 fn data_dirs() -> Vec<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let mut dirs = Vec::new();
-    match std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).filter(|p| p.is_absolute()) {
+    match std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+    {
         Some(d) => dirs.push(d),
         None => dirs.extend(home.as_ref().map(|h| h.join(".local/share"))),
     }
     let system = std::env::var("XDG_DATA_DIRS").unwrap_or_default();
-    let system = if system.is_empty() { "/usr/local/share:/usr/share".to_owned() } else { system };
-    dirs.extend(system.split(':').filter(|d| !d.is_empty()).map(PathBuf::from));
+    let system = if system.is_empty() {
+        "/usr/local/share:/usr/share".to_owned()
+    } else {
+        system
+    };
+    dirs.extend(
+        system
+            .split(':')
+            .filter(|d| !d.is_empty())
+            .map(PathBuf::from),
+    );
     // Flatpak exports, which XDG_DATA_DIRS often lacks outside a full session.
     dirs.extend(home.map(|h| h.join(".local/share/flatpak/exports/share")));
     dirs.push(PathBuf::from("/var/lib/flatpak/exports/share"));
@@ -35,11 +51,21 @@ fn data_dirs() -> Vec<PathBuf> {
 fn themes() -> &'static Vec<String> {
     static THEMES: OnceLock<Vec<String>> = OnceLock::new();
     THEMES.get_or_init(|| {
-        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-        let configured = ["gtk-4.0/settings.ini", "gtk-3.0/settings.ini"].iter().find_map(|f| {
-            let s = std::fs::read_to_string(home.join(".config").join(f)).ok()?;
-            s.lines().find_map(|l| l.trim().strip_prefix("gtk-icon-theme-name")?.trim_start().strip_prefix('=').map(|v| v.trim().trim_matches('"').to_owned()))
-        });
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        let configured = ["gtk-4.0/settings.ini", "gtk-3.0/settings.ini"]
+            .iter()
+            .find_map(|f| {
+                let s = std::fs::read_to_string(home.join(".config").join(f)).ok()?;
+                s.lines().find_map(|l| {
+                    l.trim()
+                        .strip_prefix("gtk-icon-theme-name")?
+                        .trim_start()
+                        .strip_prefix('=')
+                        .map(|v| v.trim().trim_matches('"').to_owned())
+                })
+            });
         let mut out: Vec<String> = Vec::new();
         let mut queue: Vec<String> = configured.into_iter().collect();
         while let Some(theme) = queue.pop() {
@@ -47,9 +73,20 @@ fn themes() -> &'static Vec<String> {
                 continue;
             }
             for dir in data_dirs() {
-                if let Ok(index) = std::fs::read_to_string(dir.join("icons").join(&theme).join("index.theme")) {
-                    let parents = index.lines().find_map(|l| l.strip_prefix("Inherits=")).unwrap_or("");
-                    queue.extend(parents.split(',').rev().map(|p| p.trim().to_owned()).filter(|p| !p.is_empty()));
+                if let Ok(index) =
+                    std::fs::read_to_string(dir.join("icons").join(&theme).join("index.theme"))
+                {
+                    let parents = index
+                        .lines()
+                        .find_map(|l| l.strip_prefix("Inherits="))
+                        .unwrap_or("");
+                    queue.extend(
+                        parents
+                            .split(',')
+                            .rev()
+                            .map(|p| p.trim().to_owned())
+                            .filter(|p| !p.is_empty()),
+                    );
                     break;
                 }
             }
@@ -62,8 +99,18 @@ fn themes() -> &'static Vec<String> {
     })
 }
 
-const SIZES: [&str; 10] = ["scalable", "512x512", "256x256", "128x128", "96x96", "64x64", "48x48", "symbolic", "32x32", "24x24"];
-const KINDS: [&str; 6] = ["apps", "status", "devices", "places", "categories", "mimetypes"];
+const SIZES: [&str; 10] = [
+    "scalable", "512x512", "256x256", "128x128", "96x96", "64x64", "48x48", "symbolic", "32x32",
+    "24x24",
+];
+const KINDS: [&str; 6] = [
+    "apps",
+    "status",
+    "devices",
+    "places",
+    "categories",
+    "mimetypes",
+];
 
 /// An icon name in the theme, or a path.
 pub fn icon(name: &str) -> Option<PathBuf> {
@@ -89,9 +136,14 @@ pub fn icon(name: &str) -> Option<PathBuf> {
 
 fn lookup(name: &str) -> Option<PathBuf> {
     let dirs = data_dirs();
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default();
     for theme in themes() {
-        let roots = dirs.iter().map(|d| d.join("icons").join(theme)).chain([home.join(".icons").join(theme)]);
+        let roots = dirs
+            .iter()
+            .map(|d| d.join("icons").join(theme))
+            .chain([home.join(".icons").join(theme)]);
         for root in roots.filter(|r| r.is_dir()) {
             for size in SIZES {
                 for kind in KINDS {
@@ -124,7 +176,11 @@ pub fn desktop_entry(id: &str) -> Option<PathBuf> {
     for dir in data_dirs() {
         let apps = dir.join("applications");
         let direct = apps.join(format!("{id}.desktop"));
-        let file = if direct.is_file() { Some(direct) } else { find_entry(&apps, id) };
+        let file = if direct.is_file() {
+            Some(direct)
+        } else {
+            find_entry(&apps, id)
+        };
         if let Some(file) = file
             && let Ok(text) = std::fs::read_to_string(&file)
             && let Some(name) = text.lines().find_map(|l| l.strip_prefix("Icon="))
@@ -138,10 +194,19 @@ pub fn desktop_entry(id: &str) -> Option<PathBuf> {
 /// Entries named like `com.slack.Slack.desktop` when asked for `slack`.
 fn find_entry(apps: &Path, id: &str) -> Option<PathBuf> {
     let id = id.to_lowercase();
-    std::fs::read_dir(apps).ok()?.flatten().map(|e| e.path()).find(|p| {
-        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-        p.extension().is_some_and(|e| e == "desktop") && stem.rsplit('.').next() == Some(id.as_str())
-    })
+    std::fs::read_dir(apps)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| {
+            let stem = p
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            p.extension().is_some_and(|e| e == "desktop")
+                && stem.rsplit('.').next() == Some(id.as_str())
+        })
 }
 
 /// The best icon for a notification: what it names, its desktop entry, then its app's name.
@@ -156,9 +221,29 @@ pub fn for_app(app_icon: &str, desktop: Option<&str>, app: &str) -> Option<PathB
 
 /// The spec's `image-data` (`(iiibiiay)`: width, height, rowstride, has alpha, bits per
 /// sample, channels, data) as RGBA8.
-pub fn image_data(width: i32, height: i32, stride: i32, alpha: bool, bits: i32, channels: i32, data: &[u8]) -> Option<Source> {
-    let (w, h, stride, channels) = (width as usize, height as usize, stride as usize, channels as usize);
-    if bits != 8 || w == 0 || h == 0 || w > 4096 || h > 4096 || !(3..=4).contains(&channels) || (alpha && channels != 4) {
+pub fn image_data(
+    width: i32,
+    height: i32,
+    stride: i32,
+    alpha: bool,
+    bits: i32,
+    channels: i32,
+    data: &[u8],
+) -> Option<Source> {
+    let (w, h, stride, channels) = (
+        width as usize,
+        height as usize,
+        stride as usize,
+        channels as usize,
+    );
+    if bits != 8
+        || w == 0
+        || h == 0
+        || w > 4096
+        || h > 4096
+        || !(3..=4).contains(&channels)
+        || (alpha && channels != 4)
+    {
         return None;
     }
     if data.len() < stride * (h - 1) + w * channels {
@@ -170,7 +255,11 @@ pub fn image_data(width: i32, height: i32, stride: i32, alpha: bool, bits: i32, 
             out.extend_from_slice(&[px[0], px[1], px[2], if channels == 4 { px[3] } else { 255 }]);
         }
     }
-    Some(Source::Rgba { width: w as u32, height: h as u32, bytes: out.into() })
+    Some(Source::Rgba {
+        width: w as u32,
+        height: h as u32,
+        bytes: out.into(),
+    })
 }
 
 #[cfg(test)]
@@ -181,10 +270,23 @@ mod tests {
     fn image_data_drops_row_padding_and_fills_alpha() {
         // 2×1 RGB with a 2-byte row pad.
         let src = image_data(2, 1, 8, false, 8, 3, &[1, 2, 3, 4, 5, 6, 0, 0]).unwrap();
-        let Source::Rgba { width, height, bytes } = src else { panic!() };
+        let Source::Rgba {
+            width,
+            height,
+            bytes,
+        } = src
+        else {
+            panic!()
+        };
         assert_eq!((width, height), (2, 1));
         assert_eq!(&*bytes, &[1, 2, 3, 255, 4, 5, 6, 255]);
-        assert!(image_data(2, 1, 8, false, 16, 3, &[0; 8]).is_none(), "only 8-bit samples");
-        assert!(image_data(2, 2, 6, false, 8, 3, &[0; 7]).is_none(), "short data");
+        assert!(
+            image_data(2, 1, 8, false, 16, 3, &[0; 8]).is_none(),
+            "only 8-bit samples"
+        );
+        assert!(
+            image_data(2, 2, 6, false, 8, 3, &[0; 7]).is_none(),
+            "short data"
+        );
     }
 }

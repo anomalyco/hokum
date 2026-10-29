@@ -30,7 +30,13 @@ const NEW_KEYBOARD: &str = "C8:6F:1D:42:7E:05";
 const TV: &str = "A4:36:C7:88:12:6D";
 
 /// When each nearby device is first heard after discovery starts, and its usual signal.
-const NEARBY: [(&str, u64, i16); 5] = [(STRANGER, 600, -88), (CONTROLLER, 1200, -52), (BUDS, 2000, -61), (NEW_KEYBOARD, 3000, -67), (TV, 4500, -74)];
+const NEARBY: [(&str, u64, i16); 5] = [
+    (STRANGER, 600, -88),
+    (CONTROLLER, 1200, -52),
+    (BUDS, 2000, -61),
+    (NEW_KEYBOARD, 3000, -67),
+    (TV, 4500, -74),
+];
 
 const A2DP_SINK: &str = "0000110b-0000-1000-8000-00805f9b34fb";
 const A2DP_SOURCE: &str = "0000110a-0000-1000-8000-00805f9b34fb";
@@ -62,7 +68,20 @@ pub fn device_id(address: &str) -> DeviceId {
 }
 
 fn adapter() -> Adapter {
-    let services: Vec<Service> = [GAP, GATT, DEVICE_INFO, A2DP_SINK, A2DP_SOURCE, AVRCP, AVRCP_TARGET, HFP_GATEWAY, PNP].into_iter().map(Service::new).collect();
+    let services: Vec<Service> = [
+        GAP,
+        GATT,
+        DEVICE_INFO,
+        A2DP_SINK,
+        A2DP_SOURCE,
+        AVRCP,
+        AVRCP_TARGET,
+        HFP_GATEWAY,
+        PNP,
+    ]
+    .into_iter()
+    .map(Service::new)
+    .collect();
     let mut a = Adapter {
         id: adapter_id(),
         name: "romulus".into(),
@@ -77,7 +96,11 @@ fn adapter() -> Adapter {
         pairable_timeout: 0,
         discovering: false,
         class: 0x6c010c,
-        roles: vec!["central".into(), "peripheral".into(), "central-peripheral".into()],
+        roles: vec![
+            "central".into(),
+            "peripheral".into(),
+            "central-peripheral".into(),
+        ],
         modalias: Some("usb:v1D6Bp0246d0554".into()),
         services,
         properties: Vec::new(),
@@ -95,7 +118,10 @@ fn adapter_properties(a: &Adapter) -> Vec<(String, String)> {
         ("Class".into(), format!("0x{:06x}", a.class)),
         ("Powered".into(), a.powered.to_string()),
         ("Discoverable".into(), a.discoverable.to_string()),
-        ("DiscoverableTimeout".into(), a.discoverable_timeout.to_string()),
+        (
+            "DiscoverableTimeout".into(),
+            a.discoverable_timeout.to_string(),
+        ),
         ("Pairable".into(), a.pairable.to_string()),
         ("PairableTimeout".into(), a.pairable_timeout.to_string()),
         ("Discovering".into(), a.discovering.to_string()),
@@ -128,10 +154,16 @@ fn device(s: Spec) -> Device {
         id: device_id(s.address),
         adapter: adapter_id(),
         address: s.address.into(),
-        address_type: if s.random { AddressType::Random } else { AddressType::Public },
+        address_type: if s.random {
+            AddressType::Random
+        } else {
+            AddressType::Public
+        },
         bearer: s.bearer,
         name: s.name.map(Into::into),
-        alias: s.name.map_or_else(|| s.address.replace(':', "-"), Into::into),
+        alias: s
+            .name
+            .map_or_else(|| s.address.replace(':', "-"), Into::into),
         icon: s.icon.into(),
         kind,
         class: s.class,
@@ -142,7 +174,11 @@ fn device(s: Spec) -> Device {
             modalias: s.modalias.map(Into::into),
             manufacturer_data: s
                 .company
-                .map(|(company, data)| ManufacturerData { company, company_name: company_name(company).map(Into::into), data: data.to_vec() })
+                .map(|(company, data)| ManufacturerData {
+                    company,
+                    company_name: company_name(company).map(Into::into),
+                    data: data.to_vec(),
+                })
                 .into_iter()
                 .collect(),
             ..Raw::default()
@@ -240,7 +276,13 @@ pub fn sample() -> State {
             appearance: None,
             random: false,
             bearer: Bearer::Dual,
-            uuids: &[A2DP_SINK, AVRCP, AVRCP_TARGET, HFP, "74ec2172-0bad-4d01-8f77-997b2be0722a"],
+            uuids: &[
+                A2DP_SINK,
+                AVRCP,
+                AVRCP_TARGET,
+                HFP,
+                "74ec2172-0bad-4d01-8f77-997b2be0722a",
+            ],
             modalias: Some("bluetooth:v004Cp2014d0E10"),
             company: Some((0x004c, &[0x07, 0x19, 0x01, 0x14, 0x20, 0x2b, 0x99, 0x8f])),
         }),
@@ -256,7 +298,14 @@ pub fn sample() -> State {
             appearance: Some(0x03c2),
             random: true,
             bearer: Bearer::Le,
-            uuids: &[GAP, GATT, DEVICE_INFO, BATTERY, HOGP, "00010000-0000-1000-8000-011f2000046d"],
+            uuids: &[
+                GAP,
+                GATT,
+                DEVICE_INFO,
+                BATTERY,
+                HOGP,
+                "00010000-0000-1000-8000-011f2000046d",
+            ],
             modalias: Some("usb:v046DpB034d0007"),
             company: Some((0x01da, &[0x01, 0xb0, 0x34])),
         }),
@@ -288,7 +337,16 @@ pub fn sample() -> State {
             appearance: None,
             random: false,
             bearer: Bearer::Dual,
-            uuids: &[A2DP_SOURCE, AVRCP_TARGET, HFP_GATEWAY, PAN_NAP, OPP, PBAP, MAP, PNP],
+            uuids: &[
+                A2DP_SOURCE,
+                AVRCP_TARGET,
+                HFP_GATEWAY,
+                PAN_NAP,
+                OPP,
+                PBAP,
+                MAP,
+                PNP,
+            ],
             modalias: Some("bluetooth:v00E0p1200d1436"),
             company: None,
         }),
@@ -344,7 +402,11 @@ pub fn pairing() -> State {
     if let Some(d) = s.devices.iter_mut().find(|d| d.id == buds) {
         d.pending = Some(Pending::Pairing);
     }
-    s.pairing = Some(PairingRequest { id: 1, device: buds, kind: PairingKind::Confirm { passkey: 381904 } });
+    s.pairing = Some(PairingRequest {
+        id: 1,
+        device: buds,
+        kind: PairingKind::Confirm { passkey: 381904 },
+    });
     s
 }
 
@@ -358,7 +420,10 @@ pub fn powered_off() -> State {
 
 /// bluetoothd isn't running.
 pub fn not_running() -> State {
-    State { connection: Connection::NotRunning, ..State::default() }
+    State {
+        connection: Connection::NotRunning,
+        ..State::default()
+    }
 }
 
 fn set_powered(s: &mut State, on: bool) {
@@ -386,7 +451,15 @@ fn refresh(s: &mut State) {
     for d in &mut s.devices {
         let mut p = vec![
             ("Address".into(), d.address.clone()),
-            ("AddressType".into(), if d.address_type == AddressType::Random { "random" } else { "public" }.into()),
+            (
+                "AddressType".into(),
+                if d.address_type == AddressType::Random {
+                    "random"
+                } else {
+                    "public"
+                }
+                .into(),
+            ),
             ("Alias".into(), d.alias.clone()),
             ("Icon".into(), d.icon.clone()),
             ("Paired".into(), d.paired.to_string()),
@@ -396,7 +469,14 @@ fn refresh(s: &mut State) {
             ("Connected".into(), d.connected.to_string()),
             ("ServicesResolved".into(), d.services_resolved.to_string()),
             ("LegacyPairing".into(), d.legacy_pairing.to_string()),
-            ("UUIDs".into(), d.services.iter().map(|s| s.uuid.as_str()).collect::<Vec<_>>().join(", ")),
+            (
+                "UUIDs".into(),
+                d.services
+                    .iter()
+                    .map(|s| s.uuid.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            ),
         ];
         if let Some(n) = &d.name {
             p.push(("Name".into(), n.clone()));
@@ -420,8 +500,23 @@ fn refresh(s: &mut State) {
         d.raw.properties = p;
     }
     s.devices.sort_by(|a, b| {
-        let rank = |d: &Device| if d.connected { 0 } else if d.is_paired() { 1 } else { 2 };
-        rank(a).cmp(&rank(b)).then(b.rssi.unwrap_or(i16::MIN).cmp(&a.rssi.unwrap_or(i16::MIN))).then_with(|| a.display_name().to_lowercase().cmp(&b.display_name().to_lowercase()))
+        let rank = |d: &Device| {
+            if d.connected {
+                0
+            } else if d.is_paired() {
+                1
+            } else {
+                2
+            }
+        };
+        rank(a)
+            .cmp(&rank(b))
+            .then(b.rssi.unwrap_or(i16::MIN).cmp(&a.rssi.unwrap_or(i16::MIN)))
+            .then_with(|| {
+                a.display_name()
+                    .to_lowercase()
+                    .cmp(&b.display_name().to_lowercase())
+            })
     });
 }
 
@@ -452,7 +547,11 @@ pub struct Mock {
 
 impl Mock {
     pub fn new(state: State) -> Mock {
-        Mock { state, queue: Vec::new(), next_id: 1 }
+        Mock {
+            state,
+            queue: Vec::new(),
+            next_id: 1,
+        }
     }
 
     fn later(&mut self, now: Duration, ms: u64, e: Event) {
@@ -466,7 +565,12 @@ impl Mock {
 
     fn issue(&mut self, message: String, device: Option<DeviceId>) {
         let id = self.id();
-        self.state.issues.push(Issue { id, severity: Severity::Error, message, device });
+        self.state.issues.push(Issue {
+            id,
+            severity: Severity::Error,
+            message,
+            device,
+        });
     }
 
     fn dev(&mut self, id: &DeviceId) -> Option<&mut Device> {
@@ -474,7 +578,9 @@ impl Mock {
     }
 
     fn name(&self, id: &DeviceId) -> String {
-        self.state.device(id).map_or_else(String::new, |d| d.display_name().to_owned())
+        self.state
+            .device(id)
+            .map_or_else(String::new, |d| d.display_name().to_owned())
     }
 
     /// When the next scheduled thing happens.
@@ -487,16 +593,30 @@ impl Mock {
         let powered = self.state.adapters[0].powered;
         match command {
             Command::SetPowered { on, .. } => {
-                self.state.adapters[0].power_state = if on { PowerState::TurningOn } else { PowerState::TurningOff };
+                self.state.adapters[0].power_state = if on {
+                    PowerState::TurningOn
+                } else {
+                    PowerState::TurningOff
+                };
                 self.later(now, 300, Event::Powered(on));
             }
-            Command::SetDiscoverable { on, .. } => self.state.adapters[0].discoverable = on && powered,
-            Command::SetDiscoverableTimeout { seconds, .. } => self.state.adapters[0].discoverable_timeout = seconds,
+            Command::SetDiscoverable { on, .. } => {
+                self.state.adapters[0].discoverable = on && powered
+            }
+            Command::SetDiscoverableTimeout { seconds, .. } => {
+                self.state.adapters[0].discoverable_timeout = seconds
+            }
             Command::SetPairable { on, .. } => self.state.adapters[0].pairable = on,
-            Command::SetPairableTimeout { seconds, .. } => self.state.adapters[0].pairable_timeout = seconds,
+            Command::SetPairableTimeout { seconds, .. } => {
+                self.state.adapters[0].pairable_timeout = seconds
+            }
             Command::SetAdapterAlias { alias, .. } => {
                 let a = &mut self.state.adapters[0];
-                a.alias = if alias.is_empty() { a.name.clone() } else { alias };
+                a.alias = if alias.is_empty() {
+                    a.name.clone()
+                } else {
+                    alias
+                };
             }
             Command::StartDiscovery { .. } if powered && !self.state.adapters[0].discovering => {
                 self.state.adapters[0].discovering = true;
@@ -508,7 +628,8 @@ impl Mock {
             Command::StartDiscovery { .. } => {}
             Command::StopDiscovery { .. } => {
                 self.state.adapters[0].discovering = false;
-                self.queue.retain(|(_, e)| !matches!(e, Event::Heard(_) | Event::Drift));
+                self.queue
+                    .retain(|(_, e)| !matches!(e, Event::Heard(_) | Event::Drift));
                 for d in &mut self.state.devices {
                     d.rssi = None;
                 }
@@ -522,8 +643,20 @@ impl Mock {
                     return;
                 }
                 d.pending = Some(Pending::Connecting);
-                let e = if d.address == SPEAKER { Event::ConnectFailed(device) } else { Event::Connected(device) };
-                self.later(now, if matches!(e, Event::ConnectFailed(_)) { 2500 } else { 700 }, e);
+                let e = if d.address == SPEAKER {
+                    Event::ConnectFailed(device)
+                } else {
+                    Event::Connected(device)
+                };
+                self.later(
+                    now,
+                    if matches!(e, Event::ConnectFailed(_)) {
+                        2500
+                    } else {
+                        700
+                    },
+                    e,
+                );
             }
             Command::Disconnect { device } => {
                 if let Some(d) = self.dev(&device)
@@ -547,7 +680,12 @@ impl Mock {
             Command::CancelPair { device } => {
                 self.queue.retain(|(_, e)| !matches!(e, Event::Prompt(d) | Event::Paired(d) | Event::PairFailed(d) if *d == device));
                 self.queue.retain(|(_, e)| !matches!(e, Event::Typed(_)));
-                if self.state.pairing.as_ref().is_some_and(|p| p.device == device) {
+                if self
+                    .state
+                    .pairing
+                    .as_ref()
+                    .is_some_and(|p| p.device == device)
+                {
                     self.state.pairing = None;
                 }
                 if let Some(d) = self.dev(&device)
@@ -556,14 +694,22 @@ impl Mock {
                     d.pending = None;
                 }
             }
-            Command::Trust { device } => self.dev(&device).into_iter().for_each(|d| d.trusted = true),
-            Command::Untrust { device } => self.dev(&device).into_iter().for_each(|d| d.trusted = false),
+            Command::Trust { device } => {
+                self.dev(&device).into_iter().for_each(|d| d.trusted = true)
+            }
+            Command::Untrust { device } => self
+                .dev(&device)
+                .into_iter()
+                .for_each(|d| d.trusted = false),
             Command::Block { device } => self.dev(&device).into_iter().for_each(|d| {
                 d.blocked = true;
                 d.connected = false;
                 d.services_resolved = false;
             }),
-            Command::Unblock { device } => self.dev(&device).into_iter().for_each(|d| d.blocked = false),
+            Command::Unblock { device } => self
+                .dev(&device)
+                .into_iter()
+                .for_each(|d| d.blocked = false),
             Command::Remove { device } => {
                 if let Some(d) = self.dev(&device) {
                     d.pending = Some(Pending::Removing);
@@ -572,10 +718,17 @@ impl Mock {
             }
             Command::SetAlias { device, alias } => {
                 if let Some(d) = self.dev(&device) {
-                    d.alias = if alias.is_empty() { d.name.clone().unwrap_or_else(|| d.address.replace(':', "-")) } else { alias };
+                    d.alias = if alias.is_empty() {
+                        d.name
+                            .clone()
+                            .unwrap_or_else(|| d.address.replace(':', "-"))
+                    } else {
+                        alias
+                    };
                 }
             }
-            Command::ConnectProfile { device, uuid } | Command::DisconnectProfile { device, uuid } => {
+            Command::ConnectProfile { device, uuid }
+            | Command::DisconnectProfile { device, uuid } => {
                 if let Some(d) = self.dev(&device)
                     && d.service(&uuid).is_some()
                 {
@@ -584,16 +737,23 @@ impl Mock {
                 }
             }
             Command::PairingReply { id, reply } => {
-                let Some(p) = self.state.pairing.clone().filter(|p| p.id == id) else { return };
+                let Some(p) = self.state.pairing.clone().filter(|p| p.id == id) else {
+                    return;
+                };
                 self.state.pairing = None;
                 let ok = match (&p.kind, &reply) {
                     (_, Reply::Reject) => false,
-                    (PairingKind::RequestPin, Reply::Pin(_)) | (PairingKind::RequestPasskey, Reply::Passkey(_)) => true,
+                    (PairingKind::RequestPin, Reply::Pin(_))
+                    | (PairingKind::RequestPasskey, Reply::Passkey(_)) => true,
                     (PairingKind::RequestPin | PairingKind::RequestPasskey, _) => false,
                     _ => true,
                 };
                 if ok {
-                    let e = if p.device == device_id(STRANGER) { Event::PairFailed(p.device) } else { Event::Paired(p.device) };
+                    let e = if p.device == device_id(STRANGER) {
+                        Event::PairFailed(p.device)
+                    } else {
+                        Event::Paired(p.device)
+                    };
                     self.later(now, 800, e);
                 } else if let Some(d) = self.dev(&p.device) {
                     d.pending = None;
@@ -678,13 +838,18 @@ impl Mock {
                 }
             }
             Event::Prompt(id) => {
-                let Some(address) = self.state.device(&id).map(|d| d.address.clone()) else { return };
+                let Some(address) = self.state.device(&id).map(|d| d.address.clone()) else {
+                    return;
+                };
                 let kind = match address.as_str() {
                     CONTROLLER => {
                         self.later(now, 1000, Event::Paired(id));
                         return;
                     }
-                    NEW_KEYBOARD => PairingKind::DisplayPasskey { passkey: 205117, entered: 0 },
+                    NEW_KEYBOARD => PairingKind::DisplayPasskey {
+                        passkey: 205117,
+                        entered: 0,
+                    },
                     BUDS => PairingKind::Confirm { passkey: 381904 },
                     TV => PairingKind::Confirm { passkey: 570263 },
                     _ => PairingKind::Confirm { passkey: 114862 },
@@ -693,11 +858,19 @@ impl Mock {
                 if matches!(kind, PairingKind::DisplayPasskey { .. }) {
                     self.later(now, 900, Event::Typed(request));
                 }
-                self.state.pairing = Some(PairingRequest { id: request, device: id, kind });
+                self.state.pairing = Some(PairingRequest {
+                    id: request,
+                    device: id,
+                    kind,
+                });
             }
             Event::Typed(request) => {
-                let Some(p) = self.state.pairing.as_mut().filter(|p| p.id == request) else { return };
-                let PairingKind::DisplayPasskey { entered, .. } = &mut p.kind else { return };
+                let Some(p) = self.state.pairing.as_mut().filter(|p| p.id == request) else {
+                    return;
+                };
+                let PairingKind::DisplayPasskey { entered, .. } = &mut p.kind else {
+                    return;
+                };
                 *entered += 1;
                 if *entered >= 6 {
                     let device = p.device.clone();
@@ -757,7 +930,9 @@ pub fn start() -> Bluetooth {
             driver.publish(mock.state.clone());
             loop {
                 let now = begun.elapsed();
-                let wait = mock.next_due().map_or(Duration::from_secs(3600), |t| t.saturating_sub(now));
+                let wait = mock
+                    .next_due()
+                    .map_or(Duration::from_secs(3600), |t| t.saturating_sub(now));
                 let mut changed = false;
                 match driver.commands().recv_timeout(wait) {
                     Ok(c) => {
@@ -789,16 +964,34 @@ mod tests {
     }
 
     fn consistent(s: &State) {
-        assert!(s.default_adapter.as_ref().is_none_or(|a| s.adapter(a).is_some()));
+        assert!(
+            s.default_adapter
+                .as_ref()
+                .is_none_or(|a| s.adapter(a).is_some())
+        );
         for d in &s.devices {
-            assert!(s.adapter(&d.adapter).is_some(), "{} has no adapter", d.alias);
+            assert!(
+                s.adapter(&d.adapter).is_some(),
+                "{} has no adapter",
+                d.alias
+            );
         }
-        assert!(s.pairing.as_ref().is_none_or(|p| s.device(&p.device).is_some()));
+        assert!(
+            s.pairing
+                .as_ref()
+                .is_none_or(|p| s.device(&p.device).is_some())
+        );
     }
 
     #[test]
     fn the_samples_are_consistent() {
-        for s in [sample(), scanning(), pairing(), powered_off(), not_running()] {
+        for s in [
+            sample(),
+            scanning(),
+            pairing(),
+            powered_off(),
+            not_running(),
+        ] {
             consistent(&s);
         }
         let s = sample();
@@ -831,14 +1024,34 @@ mod tests {
     fn pairing_confirms_then_connects() {
         let mut m = Mock::new(scanning());
         let buds = device_id(BUDS);
-        m.apply(Command::Pair { device: buds.clone() }, ms(0));
-        assert_eq!(m.state.device(&buds).unwrap().pending, Some(Pending::Pairing));
+        m.apply(
+            Command::Pair {
+                device: buds.clone(),
+            },
+            ms(0),
+        );
+        assert_eq!(
+            m.state.device(&buds).unwrap().pending,
+            Some(Pending::Pairing)
+        );
         m.advance(ms(600));
         let p = m.state.pairing.clone().unwrap();
         assert_eq!(p.kind, PairingKind::Confirm { passkey: 381904 });
-        m.apply(Command::PairingReply { id: p.id + 100, reply: Reply::Accept }, ms(700));
+        m.apply(
+            Command::PairingReply {
+                id: p.id + 100,
+                reply: Reply::Accept,
+            },
+            ms(700),
+        );
         assert!(m.state.pairing.is_some(), "a stale reply is ignored");
-        m.apply(Command::PairingReply { id: p.id, reply: Reply::Accept }, ms(700));
+        m.apply(
+            Command::PairingReply {
+                id: p.id,
+                reply: Reply::Accept,
+            },
+            ms(700),
+        );
         m.advance(ms(3000));
         let d = m.state.device(&buds).unwrap();
         assert!(d.paired && d.trusted && d.connected && d.pending.is_none());
@@ -851,7 +1064,10 @@ mod tests {
         let kb = device_id(NEW_KEYBOARD);
         m.apply(Command::Pair { device: kb.clone() }, ms(0));
         m.advance(ms(1600));
-        assert!(matches!(m.state.pairing.as_ref().unwrap().kind, PairingKind::DisplayPasskey { entered: 1, .. }));
+        assert!(matches!(
+            m.state.pairing.as_ref().unwrap().kind,
+            PairingKind::DisplayPasskey { entered: 1, .. }
+        ));
         m.advance(ms(10_000));
         assert!(m.state.pairing.is_none());
         assert!(m.state.device(&kb).unwrap().connected);
@@ -860,7 +1076,12 @@ mod tests {
     #[test]
     fn failures_become_issues() {
         let mut m = Mock::new(sample());
-        m.apply(Command::Connect { device: device_id(SPEAKER) }, ms(0));
+        m.apply(
+            Command::Connect {
+                device: device_id(SPEAKER),
+            },
+            ms(0),
+        );
         m.advance(ms(5000));
         assert_eq!(m.state.issues.len(), 1);
         assert_eq!(m.state.issues[0].message, "Couldn't connect to JBL Flip 6");
@@ -872,17 +1093,46 @@ mod tests {
     #[test]
     fn power_off_drops_connections_and_remove_forgets() {
         let mut m = Mock::new(sample());
-        m.apply(Command::Remove { device: device_id(PHONE) }, ms(0));
+        m.apply(
+            Command::Remove {
+                device: device_id(PHONE),
+            },
+            ms(0),
+        );
         m.advance(ms(400));
         assert!(m.state.device(&device_id(PHONE)).is_none());
-        m.apply(Command::SetPowered { adapter: adapter_id(), on: false }, ms(400));
+        m.apply(
+            Command::SetPowered {
+                adapter: adapter_id(),
+                on: false,
+            },
+            ms(400),
+        );
         assert_eq!(m.state.adapters[0].power_state, PowerState::TurningOff);
         m.advance(ms(800));
         assert!(!m.state.adapters[0].powered);
         assert_eq!(m.state.connected().count(), 0);
-        m.apply(Command::SetAlias { device: device_id(AIRPODS), alias: "Dax's AirPods".into() }, ms(800));
-        assert_eq!(m.state.device(&device_id(AIRPODS)).unwrap().display_name(), "Dax's AirPods");
-        m.apply(Command::SetAlias { device: device_id(AIRPODS), alias: String::new() }, ms(800));
-        assert_eq!(m.state.device(&device_id(AIRPODS)).unwrap().display_name(), "AirPods Pro");
+        m.apply(
+            Command::SetAlias {
+                device: device_id(AIRPODS),
+                alias: "Dax's AirPods".into(),
+            },
+            ms(800),
+        );
+        assert_eq!(
+            m.state.device(&device_id(AIRPODS)).unwrap().display_name(),
+            "Dax's AirPods"
+        );
+        m.apply(
+            Command::SetAlias {
+                device: device_id(AIRPODS),
+                alias: String::new(),
+            },
+            ms(800),
+        );
+        assert_eq!(
+            m.state.device(&device_id(AIRPODS)).unwrap().display_name(),
+            "AirPods Pro"
+        );
     }
 }

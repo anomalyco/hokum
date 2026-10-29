@@ -1,6 +1,8 @@
 //! Builds a card's elements from its template and tokens.
 
-use rune::{Color, Cursor, El, Family, Spring, SurfaceFit, TextStyle, col, el, icon, row, spacer, text};
+use rune::{
+    Color, Cursor, El, Family, Spring, SurfaceFit, TextStyle, col, el, icon, row, spacer, text,
+};
 use rune_kit::Kit;
 
 use crate::card::{Cards, Note};
@@ -46,7 +48,11 @@ impl Ctx<'_> {
             crate::theme::Fill::Solid(f) => self.paint(f),
             crate::theme::Fill::Gradient(a, b) => mix(self.paint(a), self.paint(b), 0.5),
         };
-        let under = if under.a < 0.5 { self.k.c.layer_01 } else { under };
+        let under = if under.a < 0.5 {
+            self.k.c.layer_01
+        } else {
+            under
+        };
         mix(under, Color { a: 1.0, ..c }, c.a)
     }
 
@@ -80,10 +86,27 @@ fn even(x: f32) -> f32 {
 
 /// `a` to `b` by `t`, mixed in sRGB like CSS, returned as Rune's linear colour.
 fn mix(a: Color, b: Color, t: f32) -> Color {
-    let enc = |v: f32| if v <= 0.003_130_8 { v * 12.92 } else { 1.055 * v.powf(1.0 / 2.4) - 0.055 };
-    let dec = |v: f32| if v <= 0.040_45 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) };
+    let enc = |v: f32| {
+        if v <= 0.003_130_8 {
+            v * 12.92
+        } else {
+            1.055 * v.powf(1.0 / 2.4) - 0.055
+        }
+    };
+    let dec = |v: f32| {
+        if v <= 0.040_45 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
     let m = |x: f32, y: f32| dec(enc(x) + (enc(y) - enc(x)) * t);
-    Color { r: m(a.r, b.r), g: m(a.g, b.g), b: m(a.b, b.b), a: 1.0 }
+    Color {
+        r: m(a.r, b.r),
+        g: m(a.g, b.g),
+        b: m(a.b, b.b),
+        a: 1.0,
+    }
 }
 
 fn family(f: Font) -> Family {
@@ -151,23 +174,46 @@ fn decorate(cx: &Ctx, mut e: El, p: &Props, row: bool) -> El {
 /// The app's letter in its accent colour, or the glyph the notification asked for. Glyphs are
 /// usually Nerd Font icons, so they draw in the system's monospace font.
 fn letter(cx: &Ctx, size: f32, radius: f32) -> El {
-    let badge = el().key("badge").size(size, size).radius(radius).center().fill(cx.accent);
+    let badge = el()
+        .key("badge")
+        .size(size, size)
+        .radius(radius)
+        .center()
+        .fill(cx.accent);
     if cx.n.urgency >= 2 {
-        return badge.child(icon(&rune_theme_opencode::icons::WARNING_BOLD, even(size * 0.6)).color(Color::WHITE));
+        return badge.child(
+            icon(&rune_theme_opencode::icons::WARNING_BOLD, even(size * 0.6)).color(Color::WHITE),
+        );
     }
     let glyph = even(size * 0.55);
     if let Some(g) = &cx.n.glyph {
-        let font = TextStyle::new(glyph, 400.0).lh(glyph).family(Family::SystemMono);
+        let font = TextStyle::new(glyph, 400.0)
+            .lh(glyph)
+            .family(Family::SystemMono);
         return badge.child(text(g.clone()).font(font).color(Color::WHITE));
     }
-    let ch = cx.n.app.chars().find(|c| c.is_alphanumeric()).unwrap_or('•').to_uppercase().to_string();
-    badge.child(text(ch).font(TextStyle::new(glyph, 650.0).lh(glyph)).color(Color::WHITE))
+    let ch =
+        cx.n.app
+            .chars()
+            .find(|c| c.is_alphanumeric())
+            .unwrap_or('•')
+            .to_uppercase()
+            .to_string();
+    badge.child(
+        text(ch)
+            .font(TextStyle::new(glyph, 650.0).lh(glyph))
+            .color(Color::WHITE),
+    )
 }
 
 /// The app's icon, or its letter without one.
 fn app_icon(cx: &Ctx, size: f32, radius: f32) -> El {
     match &cx.n.icon {
-        Some(img) if cx.n.urgency < 2 => el().key("icon").size(size, size).radius(radius).pixels_fit(img.pixels(), SurfaceFit::Fit),
+        Some(img) if cx.n.urgency < 2 => el()
+            .key("icon")
+            .size(size, size)
+            .radius(radius)
+            .pixels_fit(img.pixels(), SurfaceFit::Fit),
         _ => letter(cx, size, radius),
     }
 }
@@ -189,18 +235,32 @@ fn label<S: Cards>(cx: &Ctx, n: &Node, in_row: bool) -> Vec<El> {
     let t = cx.t;
     let id = cx.n.id;
     match n {
-        Node::Box { row: is_row, props, children } => {
+        Node::Box {
+            row: is_row,
+            props,
+            children,
+        } => {
             let base = if *is_row { row().center_y() } else { col() };
-            let kids = children.iter().flat_map(|c| label::<S>(cx, c, *is_row)).collect::<Vec<_>>();
+            let kids = children
+                .iter()
+                .flat_map(|c| label::<S>(cx, c, *is_row))
+                .collect::<Vec<_>>();
             vec![decorate(cx, base, props, *is_row).children(kids)]
         }
-        Node::Text { text: interp, props } => {
+        Node::Text {
+            text: interp,
+            props,
+        } => {
             let content = interp.render(cx.n);
             if content.is_empty() {
                 return Vec::new();
             }
             let size = props.size.unwrap_or(t.font_size);
-            let weight = if props.title { t.title_weight } else { props.weight.unwrap_or(400.0) };
+            let weight = if props.title {
+                t.title_weight
+            } else {
+                props.weight.unwrap_or(400.0)
+            };
             let style = TextStyle {
                 family: family(props.font.unwrap_or(t.font)),
                 tracking: props.tracking.unwrap_or(0.0),
@@ -229,11 +289,23 @@ fn label<S: Cards>(cx: &Ctx, n: &Node, in_row: bool) -> Vec<El> {
             vec![e]
         }
         Node::Badge { props } => badge(cx, props).into_iter().collect(),
-        Node::Icon { props } => vec![app_icon(cx, props.size.unwrap_or(t.icon_size), props.radius.unwrap_or(t.badge_radius))],
+        Node::Icon { props } => vec![app_icon(
+            cx,
+            props.size.unwrap_or(t.icon_size),
+            props.radius.unwrap_or(t.badge_radius),
+        )],
         Node::Image { props } => match &cx.n.image {
             Some(img) => {
-                let (w, h) = (props.width.or(props.size).unwrap_or(44.0), props.height.or(props.size).unwrap_or(44.0));
-                vec![el().key("image").size(w, h).radius(props.radius.unwrap_or(8.0)).pixels_fit(img.pixels(), SurfaceFit::Fill)]
+                let (w, h) = (
+                    props.width.or(props.size).unwrap_or(44.0),
+                    props.height.or(props.size).unwrap_or(44.0),
+                );
+                vec![
+                    el().key("image")
+                        .size(w, h)
+                        .radius(props.radius.unwrap_or(8.0))
+                        .pixels_fit(img.pixels(), SurfaceFit::Fill),
+                ]
             }
             None => Vec::new(),
         },
@@ -246,9 +318,30 @@ fn label<S: Cards>(cx: &Ctx, n: &Node, in_row: bool) -> Vec<El> {
                 let track = k.alpha(cx.paint(&t.text), 0.16);
                 let fill = cx.paint(props.color.as_ref().unwrap_or(&t.muted));
                 // A replaced note keeps its card, so a new value glides from the old one.
-                let bar = el().key("bar").w_frac(v.clamp(0.0, 1.0)).h_full().radius(h / 2.0).fill(fill).motion(Spring::new(0.15, 0.0));
-                let e = el().key("progress").w_full().h(h).radius(h / 2.0).fill(track).clip_soft(0.0).child(bar);
-                vec![decorate(cx, e, &Props { height: None, ..props.clone() }, false)]
+                let bar = el()
+                    .key("bar")
+                    .w_frac(v.clamp(0.0, 1.0))
+                    .h_full()
+                    .radius(h / 2.0)
+                    .fill(fill)
+                    .motion(Spring::new(0.15, 0.0));
+                let e = el()
+                    .key("progress")
+                    .w_full()
+                    .h(h)
+                    .radius(h / 2.0)
+                    .fill(track)
+                    .clip_soft(0.0)
+                    .child(bar);
+                vec![decorate(
+                    cx,
+                    e,
+                    &Props {
+                        height: None,
+                        ..props.clone()
+                    },
+                    false,
+                )]
             }
             None => Vec::new(),
         },
@@ -259,7 +352,10 @@ fn label<S: Cards>(cx: &Ctx, n: &Node, in_row: bool) -> Vec<El> {
             // Buttons take the theme's font, text colours and corners: the first is filled, the
             // rest are quiet.
             let size = (t.font_size - 1.0).max(10.0);
-            let style = TextStyle { family: family(t.font), ..TextStyle::new(size, 550.0).lh(line(size)) };
+            let style = TextStyle {
+                family: family(t.font),
+                ..TextStyle::new(size, 550.0).lh(line(size))
+            };
             let radius = (t.radius * 0.6).clamp(2.0, 8.0);
             let buttons = cx.n.actions.iter().enumerate().map(|(i, (key, label))| {
                 let key = key.clone();
@@ -276,7 +372,12 @@ fn label<S: Cards>(cx: &Ctx, n: &Node, in_row: bool) -> Vec<El> {
                     .press(k.c.pressed)
                     .cursor(Cursor::Pointer)
                     .on_press(move |s: &mut S| s.invoke(id, &key))
-                    .child(text(label.clone()).key("label").font(style).color(cx.ink(if primary { &t.text } else { &t.muted })));
+                    .child(
+                        text(label.clone())
+                            .key("label")
+                            .font(style)
+                            .color(cx.ink(if primary { &t.text } else { &t.muted })),
+                    );
                 if primary {
                     // Rune blends in linear light; `Kit::alpha` re-solves the opacity so it looks
                     // like 8% does in a browser instead of three times that.
@@ -311,14 +412,24 @@ fn label<S: Cards>(cx: &Ctx, n: &Node, in_row: bool) -> Vec<El> {
             ]
         }
         Node::Spacer => vec![spacer()],
-        Node::If { cond, then, otherwise } => {
+        Node::If {
+            cond,
+            then,
+            otherwise,
+        } => {
             let branch = if cx.has(cond) { then } else { otherwise };
-            branch.iter().flat_map(|c| label::<S>(cx, c, in_row)).collect()
+            branch
+                .iter()
+                .flat_map(|c| label::<S>(cx, c, in_row))
+                .collect()
         }
     }
 }
 
 /// The template's elements for this card, in order.
 pub fn render<S: Cards>(cx: &Ctx, nodes: &[Node]) -> Vec<El> {
-    nodes.iter().flat_map(|n| label::<S>(cx, n, false)).collect()
+    nodes
+        .iter()
+        .flat_map(|n| label::<S>(cx, n, false))
+        .collect()
 }

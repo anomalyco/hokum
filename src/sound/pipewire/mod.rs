@@ -34,7 +34,9 @@ use pw::spa::pod::Pod;
 use pw::spa::utils::dict::DictRef;
 use pw::types::ObjectType;
 
-use crate::sound::model::{self, Command, Connection, Driver, Id, Issue, Severity, State, Target, Volume};
+use crate::sound::model::{
+    self, Command, Connection, Driver, Id, Issue, Severity, State, Target, Volume,
+};
 
 use self::params::Param;
 use self::store::{LinkG, MetadataG, NodeG, PortG, Props, RunState, Store};
@@ -79,7 +81,12 @@ pub fn start() -> Result<model::Audio, String> {
 
 fn run(driver: Driver, rx: pw::channel::Receiver<Msg>) {
     pw::init();
-    let lost = |driver: &Driver, e: String| driver.publish(State { connection: Connection::Lost(e), ..State::default() });
+    let lost = |driver: &Driver, e: String| {
+        driver.publish(State {
+            connection: Connection::Lost(e),
+            ..State::default()
+        })
+    };
     // The loop lives as long as the process: leaking it lets timers be stored anywhere.
     let main_loop: &'static MainLoopRc = match MainLoopRc::new(None) {
         Ok(l) => Box::leak(Box::new(l)),
@@ -192,7 +199,12 @@ struct Backend {
 }
 
 fn props_of(dict: Option<&DictRef>) -> Props {
-    dict.map(|d| d.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()).unwrap_or_default()
+    dict.map(|d| {
+        d.iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 impl Backend {
@@ -303,7 +315,9 @@ impl Backend {
     }
 
     fn done(&mut self, seq: i32) {
-        let Some(conn) = self.conn.as_mut() else { return };
+        let Some(conn) = self.conn.as_mut() else {
+            return;
+        };
         if let Some(list) = conn.enum_syncs.remove(&seq) {
             for (object, id) in list {
                 self.store.param_done(object, id);
@@ -326,7 +340,10 @@ impl Backend {
             self.backoff = Duration::from_millis(250);
             self.dirty = true;
             if !self.store.has_session_manager() {
-                self.issue(Severity::Warning, "No session manager is running (WirePlumber)".into());
+                self.issue(
+                    Severity::Warning,
+                    "No session manager is running (WirePlumber)".into(),
+                );
             }
         }
         if self.dirty {
@@ -363,10 +380,14 @@ impl Backend {
         let id = g.id;
         let props = props_of(g.props);
         let weak = self.weak.clone();
-        let Some(conn) = self.conn.as_mut() else { return };
+        let Some(conn) = self.conn.as_mut() else {
+            return;
+        };
         let bound = match g.type_ {
             ObjectType::Node => {
-                let Ok(node) = conn.registry.bind::<pw::node::Node, _>(g) else { return };
+                let Ok(node) = conn.registry.bind::<pw::node::Node, _>(g) else {
+                    return;
+                };
                 let (w, w2) = (weak.clone(), weak.clone());
                 let l = node
                     .add_listener_local()
@@ -397,21 +418,41 @@ impl Backend {
                         }
                     })
                     .register();
-                self.store.nodes.insert(id, NodeG { props, state: RunState::Creating });
+                self.store.nodes.insert(
+                    id,
+                    NodeG {
+                        props,
+                        state: RunState::Creating,
+                    },
+                );
                 Bound::Node(l, node)
             }
             ObjectType::Device => {
-                let Ok(device) = conn.registry.bind::<pw::device::Device, _>(g) else { return };
+                let Ok(device) = conn.registry.bind::<pw::device::Device, _>(g) else {
+                    return;
+                };
                 let (w, w2) = (weak.clone(), weak.clone());
                 let l = device
                     .add_listener_local()
                     .info(move |info| {
                         if let Some(rc) = w.upgrade() {
                             let mut b = rc.borrow_mut();
-                            if info.change_mask().contains(pw::device::DeviceChangeMask::PROPS) {
+                            if info
+                                .change_mask()
+                                .contains(pw::device::DeviceChangeMask::PROPS)
+                            {
                                 b.store.devices.insert(id, props_of(info.props()));
                             }
-                            let changed = b.param_changes(id, info.params(), &[params::ENUM_PROFILE, params::PROFILE, params::ENUM_ROUTE, params::ROUTE]);
+                            let changed = b.param_changes(
+                                id,
+                                info.params(),
+                                &[
+                                    params::ENUM_PROFILE,
+                                    params::PROFILE,
+                                    params::ENUM_ROUTE,
+                                    params::ROUTE,
+                                ],
+                            );
                             b.enumerate(id, &changed);
                             b.mark_dirty();
                         }
@@ -426,7 +467,9 @@ impl Backend {
                 Bound::Device(l, device)
             }
             ObjectType::Port => {
-                let Ok(port) = conn.registry.bind::<pw::port::Port, _>(g) else { return };
+                let Ok(port) = conn.registry.bind::<pw::port::Port, _>(g) else {
+                    return;
+                };
                 let w = weak.clone();
                 let l = port
                     .add_listener_local()
@@ -442,11 +485,19 @@ impl Backend {
                         }
                     })
                     .register();
-                self.store.ports.insert(id, PortG { output: props.get("port.direction").is_some_and(|d| d == "out"), props });
+                self.store.ports.insert(
+                    id,
+                    PortG {
+                        output: props.get("port.direction").is_some_and(|d| d == "out"),
+                        props,
+                    },
+                );
                 Bound::Port(l, port)
             }
             ObjectType::Link => {
-                let Ok(link) = conn.registry.bind::<pw::link::Link, _>(g) else { return };
+                let Ok(link) = conn.registry.bind::<pw::link::Link, _>(g) else {
+                    return;
+                };
                 let w = weak.clone();
                 let l = link
                     .add_listener_local()
@@ -468,18 +519,32 @@ impl Backend {
                     })
                     .register();
                 let num = |k: &str| props.get(k).and_then(|v| v.parse().ok()).unwrap_or(0);
-                self.store.links.insert(id, LinkG { output_node: num("link.output.node"), output_port: num("link.output.port"), input_node: num("link.input.node"), input_port: num("link.input.port"), active: false });
+                self.store.links.insert(
+                    id,
+                    LinkG {
+                        output_node: num("link.output.node"),
+                        output_port: num("link.output.port"),
+                        input_node: num("link.input.node"),
+                        input_port: num("link.input.port"),
+                        active: false,
+                    },
+                );
                 Bound::Link(l, link)
             }
             ObjectType::Client => {
-                let Ok(client) = conn.registry.bind::<pw::client::Client, _>(g) else { return };
+                let Ok(client) = conn.registry.bind::<pw::client::Client, _>(g) else {
+                    return;
+                };
                 let w = weak.clone();
                 let l = client
                     .add_listener_local()
                     .info(move |info| {
                         if let Some(rc) = w.upgrade() {
                             let mut b = rc.borrow_mut();
-                            if info.change_mask().contains(pw::client::ClientChangeMask::PROPS) {
+                            if info
+                                .change_mask()
+                                .contains(pw::client::ClientChangeMask::PROPS)
+                            {
                                 b.store.clients.insert(id, props_of(info.props()));
                             }
                             b.mark_dirty();
@@ -494,7 +559,9 @@ impl Backend {
                 if !matches!(name.as_str(), "default" | "settings") {
                     return;
                 }
-                let Ok(metadata) = conn.registry.bind::<pw::metadata::Metadata, _>(g) else { return };
+                let Ok(metadata) = conn.registry.bind::<pw::metadata::Metadata, _>(g) else {
+                    return;
+                };
                 let w = weak.clone();
                 let l = metadata
                     .add_listener_local()
@@ -517,7 +584,13 @@ impl Backend {
                         0
                     })
                     .register();
-                self.store.metadata.insert(id, MetadataG { name, entries: Default::default() });
+                self.store.metadata.insert(
+                    id,
+                    MetadataG {
+                        name,
+                        entries: Default::default(),
+                    },
+                );
                 Bound::Metadata(l, metadata)
             }
             _ => return,
@@ -530,12 +603,20 @@ impl Backend {
 
     /// The watched param ids whose flags changed since the last info (all of them the first
     /// time): PipeWire toggles a param's serial flag whenever it changes.
-    fn param_changes(&mut self, object: Id, infos: &[pw::spa::param::ParamInfo], watch: &[u32]) -> Vec<u32> {
-        let Some(conn) = self.conn.as_mut() else { return Vec::new() };
+    fn param_changes(
+        &mut self,
+        object: Id,
+        infos: &[pw::spa::param::ParamInfo],
+        watch: &[u32],
+    ) -> Vec<u32> {
+        let Some(conn) = self.conn.as_mut() else {
+            return Vec::new();
+        };
         let mut changed = Vec::new();
         for info in infos {
             let id = info.id().as_raw();
-            if !watch.contains(&id) || !info.flags().contains(pw::spa::param::ParamInfoFlags::READ) {
+            if !watch.contains(&id) || !info.flags().contains(pw::spa::param::ParamInfoFlags::READ)
+            {
                 continue;
             }
             let flags = info.flags().bits();
@@ -548,7 +629,9 @@ impl Backend {
 
     /// Asks for fresh enumerations of `ids` on `object`, closed by one core sync.
     fn enumerate(&mut self, object: Id, ids: &[u32]) {
-        let Some(conn) = self.conn.as_mut() else { return };
+        let Some(conn) = self.conn.as_mut() else {
+            return;
+        };
         if ids.is_empty() {
             return;
         }
@@ -557,8 +640,12 @@ impl Backend {
             conn.next_seq += 1;
             let seq = conn.next_seq;
             match conn.objects.get(&object) {
-                Some(Bound::Node(_, n)) => n.enum_params(seq, Some(ParamType::from_raw(id)), 0, u32::MAX),
-                Some(Bound::Device(_, d)) => d.enum_params(seq, Some(ParamType::from_raw(id)), 0, u32::MAX),
+                Some(Bound::Node(_, n)) => {
+                    n.enum_params(seq, Some(ParamType::from_raw(id)), 0, u32::MAX)
+                }
+                Some(Bound::Device(_, d)) => {
+                    d.enum_params(seq, Some(ParamType::from_raw(id)), 0, u32::MAX)
+                }
                 _ => continue,
             }
             self.store.param_request(object, id);
@@ -581,7 +668,9 @@ impl Backend {
     fn mark_dirty(&mut self) {
         self.dirty = true;
         if !self.armed {
-            let wait = FRAME.saturating_sub(self.last_publish.elapsed()).max(Duration::from_millis(1));
+            let wait = FRAME
+                .saturating_sub(self.last_publish.elapsed())
+                .max(Duration::from_millis(1));
             self.publish.update_timer(Some(wait), None);
             self.armed = true;
         }
@@ -603,10 +692,18 @@ impl Backend {
 
     fn publish_now(&mut self) {
         let levels: HashMap<Target, f32> = match self.conn.as_mut() {
-            Some(c) => c.meters.iter_mut().map(|(t, m)| (*t, m.take_level())).collect(),
+            Some(c) => c
+                .meters
+                .iter_mut()
+                .map(|(t, m)| (*t, m.take_level()))
+                .collect(),
             None => HashMap::new(),
         };
-        let mut state = if self.ready { store::build(&self.store, &levels) } else { State::default() };
+        let mut state = if self.ready {
+            store::build(&self.store, &levels)
+        } else {
+            State::default()
+        };
         state.connection = self.connection.clone();
         state.issues = self.issues.clone();
         self.last_publish = Instant::now();
@@ -616,13 +713,17 @@ impl Backend {
 
     /// Starts meters for metered targets that exist and stops the rest.
     fn sync_meters(&mut self) {
-        let Some(conn) = self.conn.as_mut() else { return };
+        let Some(conn) = self.conn.as_mut() else {
+            return;
+        };
         let mut wanted: HashMap<Target, (Id, bool)> = HashMap::new();
         if self.ready {
             let state = store::build(&self.store, &HashMap::new());
             for t in &self.metering {
                 let node = match *t {
-                    Target::Device(d) => state.device(d).map(|d| (d.id, d.kind == model::DeviceKind::Sink)),
+                    Target::Device(d) => state
+                        .device(d)
+                        .map(|d| (d.id, d.kind == model::DeviceKind::Sink)),
                     Target::Stream(s) => state.stream(s).and_then(|s| match s.kind {
                         model::StreamKind::Playback => Some((s.id, false)),
                         // What a recording hears: its source.
@@ -634,12 +735,21 @@ impl Backend {
                 }
             }
         }
-        conn.meters.retain(|t, m| wanted.get(t).is_some_and(|(n, _)| *n == m.node));
+        conn.meters
+            .retain(|t, m| wanted.get(t).is_some_and(|(n, _)| *n == m.node));
         for (t, (node, sink)) in wanted {
             if conn.meters.contains_key(&t) {
                 continue;
             }
-            let Some(serial) = self.store.nodes.get(&node).and_then(|n| n.props.get("object.serial")).cloned() else { continue };
+            let Some(serial) = self
+                .store
+                .nodes
+                .get(&node)
+                .and_then(|n| n.props.get("object.serial"))
+                .cloned()
+            else {
+                continue;
+            };
             match meter::Meter::new(&conn.core, node, &serial, sink) {
                 Ok(m) => {
                     conn.meters.insert(t, m);
@@ -685,7 +795,9 @@ impl Backend {
                 let v = self.volume_of(target)?.with_combined(volume);
                 self.write_volume(target, Some(v), None)
             }
-            Command::SetChannelVolumes { target, volume } => self.write_volume(target, Some(volume), None),
+            Command::SetChannelVolumes { target, volume } => {
+                self.write_volume(target, Some(volume), None)
+            }
             Command::SetBalance { target, balance } => {
                 let v = self.volume_of(target)?.with_balance(balance);
                 self.write_volume(target, Some(v), None)
@@ -696,24 +808,45 @@ impl Backend {
                 let key = match d.kind {
                     model::DeviceKind::Sink => "default.configured.audio.sink",
                     model::DeviceKind::Source => "default.configured.audio.source",
-                    model::DeviceKind::Monitor => return Err("A monitor can't be the default".into()),
+                    model::DeviceKind::Monitor => {
+                        return Err("A monitor can't be the default".into());
+                    }
                 };
                 let value = serde_json::json!({ "name": d.name }).to_string();
-                self.set_metadata("default", 0, key, Some("Spa:String:JSON"), Some(&value), "Couldn't change the default device")
+                self.set_metadata(
+                    "default",
+                    0,
+                    key,
+                    Some("Spa:String:JSON"),
+                    Some(&value),
+                    "Couldn't change the default device",
+                )
             }
             Command::SetPort { device, port } => {
-                let (card, dev) = self.store.node_card(device).ok_or("That device has no ports")?;
+                let (card, dev) = self
+                    .store
+                    .node_card(device)
+                    .ok_or("That device has no ports")?;
                 let profile = self.store.active_profile(card).map(|p| p.index);
                 let route = self
                     .store
                     .enum_routes(card)
-                    .find(|r| r.name == port && (r.devices.is_empty() || r.devices.contains(&dev)) && profile.is_none_or(|p| r.profiles.is_empty() || r.profiles.contains(&p)))
+                    .find(|r| {
+                        r.name == port
+                            && (r.devices.is_empty() || r.devices.contains(&dev))
+                            && profile
+                                .is_none_or(|p| r.profiles.is_empty() || r.profiles.contains(&p))
+                    })
                     .ok_or("That port isn't available")?;
                 let pod = params::route_pod(route.index, dev, None);
                 self.set_device_param(card, params::ROUTE, &pod, "Couldn't switch the port")
             }
             Command::SetProfile { card, profile } => {
-                let p = self.store.enum_profiles(card).find(|p| p.name == profile).ok_or("That profile isn't available")?;
+                let p = self
+                    .store
+                    .enum_profiles(card)
+                    .find(|p| p.name == profile)
+                    .ok_or("That profile isn't available")?;
                 let pod = params::profile_pod(p.index);
                 let what = match store::codec(&p.name, &p.description) {
                     Some(c) => format!("Couldn't switch to {c}"),
@@ -723,13 +856,42 @@ impl Backend {
             }
             Command::MoveStream { stream, device } => {
                 self.last.stream(stream).ok_or("That app is gone")?;
-                let serial = self.store.nodes.get(&device).and_then(|n| n.props.get("object.serial")).cloned().ok_or("That device is gone")?;
+                let serial = self
+                    .store
+                    .nodes
+                    .get(&device)
+                    .and_then(|n| n.props.get("object.serial"))
+                    .cloned()
+                    .ok_or("That device is gone")?;
                 // As pipewire-pulse does: WirePlumber follows target.object (and remembers it).
-                self.set_metadata("default", stream, "target.object", Some("Spa:Id"), Some(&serial), "Couldn't move the app")?;
-                self.set_metadata("default", stream, "target.node", Some("Spa:Id"), Some(&device.to_string()), "Couldn't move the app")
+                self.set_metadata(
+                    "default",
+                    stream,
+                    "target.object",
+                    Some("Spa:Id"),
+                    Some(&serial),
+                    "Couldn't move the app",
+                )?;
+                self.set_metadata(
+                    "default",
+                    stream,
+                    "target.node",
+                    Some("Spa:Id"),
+                    Some(&device.to_string()),
+                    "Couldn't move the app",
+                )
             }
             Command::CreateVirtualSink { name } => {
-                let slug: String = name.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' }).collect();
+                let slug: String = name
+                    .chars()
+                    .map(|c| {
+                        if c.is_ascii_alphanumeric() {
+                            c.to_ascii_lowercase()
+                        } else {
+                            '-'
+                        }
+                    })
+                    .collect();
                 let node_name = format!("{}{}", store::VIRTUAL_PREFIX, slug.trim_matches('-'));
                 if self.store.node_by_name(&node_name).is_some() {
                     return Err(format!("There's already a device called {name}"));
@@ -747,9 +909,13 @@ impl Backend {
                     "object.linger" => "true",
                     store::OURS_KEY => "true",
                 };
-                let node: pw::node::Node = conn.core.create_object("adapter", &props).map_err(|e| format!("Couldn't create {name}: {e}"))?;
+                let node: pw::node::Node = conn
+                    .core
+                    .create_object("adapter", &props)
+                    .map_err(|e| format!("Couldn't create {name}: {e}"))?;
                 let proxy = node.upcast();
-                conn.pending.insert(proxy.id(), format!("Couldn't create {name}"));
+                conn.pending
+                    .insert(proxy.id(), format!("Couldn't create {name}"));
                 conn.created.push(proxy);
                 Ok(())
             }
@@ -759,17 +925,47 @@ impl Backend {
                     return Err("Only devices made here can be removed".into());
                 }
                 let conn = self.conn.as_ref().ok_or("Not connected to PipeWire")?;
-                conn.registry.destroy_global(device).into_result().map(|_| ()).map_err(|e| format!("Couldn't remove {}: {e}", d.description))
+                conn.registry
+                    .destroy_global(device)
+                    .into_result()
+                    .map(|_| ())
+                    .map_err(|e| format!("Couldn't remove {}: {e}", d.description))
             }
             Command::SetRateQuantum { rate, quantum } => {
                 let r = rate.unwrap_or(0).to_string();
                 let q = quantum.unwrap_or(0).to_string();
-                self.set_metadata("settings", 0, "clock.force-rate", None, Some(&r), "Couldn't change the sample rate")?;
-                self.set_metadata("settings", 0, "clock.force-quantum", None, Some(&q), "Couldn't change the buffer size")
+                self.set_metadata(
+                    "settings",
+                    0,
+                    "clock.force-rate",
+                    None,
+                    Some(&r),
+                    "Couldn't change the sample rate",
+                )?;
+                self.set_metadata(
+                    "settings",
+                    0,
+                    "clock.force-quantum",
+                    None,
+                    Some(&q),
+                    "Couldn't change the buffer size",
+                )
             }
-            Command::Link { output_port, input_port } => {
-                let node_of = |p: Id| self.store.ports.get(&p).and_then(|p| p.props.get("node.id")).cloned();
-                let (out_node, in_node) = (node_of(output_port).ok_or("That port is gone")?, node_of(input_port).ok_or("That port is gone")?);
+            Command::Link {
+                output_port,
+                input_port,
+            } => {
+                let node_of = |p: Id| {
+                    self.store
+                        .ports
+                        .get(&p)
+                        .and_then(|p| p.props.get("node.id"))
+                        .cloned()
+                };
+                let (out_node, in_node) = (
+                    node_of(output_port).ok_or("That port is gone")?,
+                    node_of(input_port).ok_or("That port is gone")?,
+                );
                 let conn = self.conn.as_mut().ok_or("Not connected to PipeWire")?;
                 let props = properties! {
                     "link.output.node" => out_node.as_str(),
@@ -778,15 +974,23 @@ impl Backend {
                     "link.input.port" => input_port.to_string(),
                     "object.linger" => "true",
                 };
-                let link: pw::link::Link = conn.core.create_object("link-factory", &props).map_err(|e| format!("Couldn't connect those: {e}"))?;
+                let link: pw::link::Link = conn
+                    .core
+                    .create_object("link-factory", &props)
+                    .map_err(|e| format!("Couldn't connect those: {e}"))?;
                 let proxy = link.upcast();
-                conn.pending.insert(proxy.id(), "Couldn't connect those".into());
+                conn.pending
+                    .insert(proxy.id(), "Couldn't connect those".into());
                 conn.created.push(proxy);
                 Ok(())
             }
             Command::Unlink { link } => {
                 let conn = self.conn.as_ref().ok_or("Not connected to PipeWire")?;
-                conn.registry.destroy_global(link).into_result().map(|_| ()).map_err(|e| format!("Couldn't disconnect those: {e}"))
+                conn.registry
+                    .destroy_global(link)
+                    .into_result()
+                    .map(|_| ())
+                    .map_err(|e| format!("Couldn't disconnect those: {e}"))
             }
             Command::SetMetering { .. } | Command::DismissIssue { .. } => Ok(()),
         }
@@ -794,17 +998,44 @@ impl Backend {
 
     fn volume_of(&self, target: Target) -> Result<Volume, String> {
         match target {
-            Target::Device(d) => self.last.device(d).map(|d| d.volume.clone()).ok_or_else(|| "That device is gone".into()),
-            Target::Stream(s) => self.last.stream(s).map(|s| s.volume.clone()).ok_or_else(|| "That app is gone".into()),
+            Target::Device(d) => self
+                .last
+                .device(d)
+                .map(|d| d.volume.clone())
+                .ok_or_else(|| "That device is gone".into()),
+            Target::Stream(s) => self
+                .last
+                .stream(s)
+                .map(|s| s.volume.clone())
+                .ok_or_else(|| "That app is gone".into()),
         }
     }
 
     /// Writes volume and/or mute where WirePlumber keeps them: the card's active route for
     /// hardware, the node's props otherwise.
-    fn write_volume(&mut self, target: Target, volume: Option<Volume>, mute: Option<bool>) -> Result<(), String> {
+    fn write_volume(
+        &mut self,
+        target: Target,
+        volume: Option<Volume>,
+        mute: Option<bool>,
+    ) -> Result<(), String> {
         let (node, what) = match target {
-            Target::Device(d) => (d, if volume.is_some() { "Couldn't change the volume" } else { "Couldn't mute" }),
-            Target::Stream(s) => (s, if volume.is_some() { "Couldn't change the app's volume" } else { "Couldn't mute the app" }),
+            Target::Device(d) => (
+                d,
+                if volume.is_some() {
+                    "Couldn't change the volume"
+                } else {
+                    "Couldn't mute"
+                },
+            ),
+            Target::Stream(s) => (
+                s,
+                if volume.is_some() {
+                    "Couldn't change the app's volume"
+                } else {
+                    "Couldn't mute the app"
+                },
+            ),
         };
         let current = self.volume_of(target)?;
         let linear = volume.map(|v| store::linear_channels(&current, &v));
@@ -817,29 +1048,60 @@ impl Backend {
                 l.resize(n, l.last().copied().unwrap_or(0.0));
                 l
             });
-            let pod = params::route_pod(route.index, route.device.unwrap_or(0), Some(params::props_object(linear.as_deref(), mute)));
+            let pod = params::route_pod(
+                route.index,
+                route.device.unwrap_or(0),
+                Some(params::props_object(linear.as_deref(), mute)),
+            );
             return self.set_device_param(card, params::ROUTE, &pod, what);
         }
         let pod = params::props_pod(linear.as_deref(), mute);
         let conn = self.conn.as_mut().ok_or("Not connected to PipeWire")?;
-        let Some(Bound::Node(_, n)) = conn.objects.get(&node) else { return Err("That device is gone".into()) };
+        let Some(Bound::Node(_, n)) = conn.objects.get(&node) else {
+            return Err("That device is gone".into());
+        };
         n.set_param(ParamType::Props, 0, Pod::from_bytes(&pod).ok_or("bad pod")?);
         conn.pending.insert(n.upcast_ref().id(), what.into());
         Ok(())
     }
 
-    fn set_device_param(&mut self, card: Id, id: u32, pod: &[u8], what: &str) -> Result<(), String> {
+    fn set_device_param(
+        &mut self,
+        card: Id,
+        id: u32,
+        pod: &[u8],
+        what: &str,
+    ) -> Result<(), String> {
         let conn = self.conn.as_mut().ok_or("Not connected to PipeWire")?;
-        let Some(Bound::Device(_, d)) = conn.objects.get(&card) else { return Err("That card is gone".into()) };
-        d.set_param(ParamType::from_raw(id), 0, Pod::from_bytes(pod).ok_or("bad pod")?);
+        let Some(Bound::Device(_, d)) = conn.objects.get(&card) else {
+            return Err("That card is gone".into());
+        };
+        d.set_param(
+            ParamType::from_raw(id),
+            0,
+            Pod::from_bytes(pod).ok_or("bad pod")?,
+        );
         conn.pending.insert(d.upcast_ref().id(), what.into());
         Ok(())
     }
 
-    fn set_metadata(&mut self, name: &str, subject: u32, key: &str, type_: Option<&str>, value: Option<&str>, what: &str) -> Result<(), String> {
-        let (id, _) = self.store.metadata_named(name).ok_or("No session manager is running (WirePlumber)")?;
+    fn set_metadata(
+        &mut self,
+        name: &str,
+        subject: u32,
+        key: &str,
+        type_: Option<&str>,
+        value: Option<&str>,
+        what: &str,
+    ) -> Result<(), String> {
+        let (id, _) = self
+            .store
+            .metadata_named(name)
+            .ok_or("No session manager is running (WirePlumber)")?;
         let conn = self.conn.as_mut().ok_or("Not connected to PipeWire")?;
-        let Some(Bound::Metadata(_, m)) = conn.objects.get(&id) else { return Err("No session manager is running (WirePlumber)".into()) };
+        let Some(Bound::Metadata(_, m)) = conn.objects.get(&id) else {
+            return Err("No session manager is running (WirePlumber)".into());
+        };
         m.set_property(subject, key, type_, value);
         conn.pending.insert(m.upcast_ref().id(), what.into());
         Ok(())

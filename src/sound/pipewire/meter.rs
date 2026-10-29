@@ -52,19 +52,31 @@ impl Meter {
         if sink {
             props.insert("stream.capture.sink", "true");
         }
-        let stream = StreamRc::new(core.clone(), "hokum-sound-meter", props).map_err(|e| e.to_string())?;
+        let stream =
+            StreamRc::new(core.clone(), "hokum-sound-meter", props).map_err(|e| e.to_string())?;
         let peak = Rc::new(Cell::new(0.0f32));
         let p = peak.clone();
         let listener = stream
             .add_local_listener_with_user_data(())
             .process(move |stream, _| {
-                let Some(mut buffer) = stream.dequeue_buffer() else { return };
-                let Some(data) = buffer.datas_mut().first_mut() else { return };
+                let Some(mut buffer) = stream.dequeue_buffer() else {
+                    return;
+                };
+                let Some(data) = buffer.datas_mut().first_mut() else {
+                    return;
+                };
                 let chunk = data.chunk().as_raw();
                 let (offset, size) = (chunk.offset as usize, chunk.size as usize);
                 let Some(bytes) = data.data() else { return };
                 let end = (offset + size).min(bytes.len());
-                let max = bytes.get(offset..end).unwrap_or_default().as_chunks::<4>().0.iter().map(|s| f32::from_le_bytes(*s).abs()).fold(0.0f32, f32::max);
+                let max = bytes
+                    .get(offset..end)
+                    .unwrap_or_default()
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|s| f32::from_le_bytes(*s).abs())
+                    .fold(0.0f32, f32::max);
                 if max > p.get() {
                     p.set(max);
                 }
@@ -75,11 +87,28 @@ impl Meter {
         let mut info = spa::param::audio::AudioInfoRaw::new();
         info.set_format(spa::param::audio::AudioFormat::F32LE);
         info.set_rate(RATE);
-        let obj = spa::pod::Object { type_: spa::utils::SpaTypes::ObjectParamFormat.as_raw(), id: spa::param::ParamType::EnumFormat.as_raw(), properties: info.into() };
+        let obj = spa::pod::Object {
+            type_: spa::utils::SpaTypes::ObjectParamFormat.as_raw(),
+            id: spa::param::ParamType::EnumFormat.as_raw(),
+            properties: info.into(),
+        };
         let bytes = super::params::serialize(&spa::pod::Value::Object(obj));
         let mut params = [spa::pod::Pod::from_bytes(&bytes).ok_or("bad format pod")?];
-        stream.connect(spa::utils::Direction::Input, None, StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS, &mut params).map_err(|e| e.to_string())?;
-        Ok(Meter { node, _listener: listener, _stream: stream, peak, level: 0.0 })
+        stream
+            .connect(
+                spa::utils::Direction::Input,
+                None,
+                StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS,
+                &mut params,
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(Meter {
+            node,
+            _listener: listener,
+            _stream: stream,
+            peak,
+            level: 0.0,
+        })
     }
 
     /// The level to show now, cubic: the loudest peak since the last call, falling off

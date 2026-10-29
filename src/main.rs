@@ -82,22 +82,45 @@ fn main() {
         return;
     }
     if argv.first().is_some_and(|a| a == "check") {
-        std::process::exit(if config::check(argv.get(1).map(String::as_str)) { 0 } else { 1 });
+        std::process::exit(if config::check(argv.get(1).map(String::as_str)) {
+            0
+        } else {
+            1
+        });
     }
     if argv.first().is_some_and(|a| a == "update") {
         std::process::exit(update::cli(&argv));
     }
-    if argv.first().is_some_and(|a| matches!(a.as_str(), "dismiss" | "invoke" | "dnd")) {
+    if argv
+        .first()
+        .is_some_and(|a| matches!(a.as_str(), "dismiss" | "invoke" | "dnd"))
+    {
         std::process::exit(bus::control(&argv));
     }
     // The backends without the window (not in --help).
-    match (argv.first().map(String::as_str), argv.get(1).map(String::as_str)) {
-        (Some("sound"), Some("debug")) => std::process::exit(sound::pipewire::debug::cli(&argv[2..])),
-        (Some("bt" | "bluetooth"), Some("debug")) => std::process::exit(bluetooth::bluez::debug::cli(&argv[1..])),
+    match (
+        argv.first().map(String::as_str),
+        argv.get(1).map(String::as_str),
+    ) {
+        (Some("sound"), Some("debug")) => {
+            std::process::exit(sound::pipewire::debug::cli(&argv[2..]))
+        }
+        (Some("bt" | "bluetooth"), Some("debug")) => {
+            std::process::exit(bluetooth::bluez::debug::cli(&argv[1..]))
+        }
         _ => {}
     }
     let headless = argv.iter().any(|a| {
-        matches!(a.as_str(), "--snap" | "--tree" | "--trace" | "--frames" | "--strip" | "--list-scenes" | "--first-pixels")
+        matches!(
+            a.as_str(),
+            "--snap"
+                | "--tree"
+                | "--trace"
+                | "--frames"
+                | "--strip"
+                | "--list-scenes"
+                | "--first-pixels"
+        )
     });
     let service = argv.first().is_some_and(|a| a == "service");
     let section = argv.first().and_then(|a| settings::Section::from_word(a));
@@ -159,11 +182,17 @@ fn run(open: bool, replace: bool, section: Option<settings::Section>) {
     let config = watch::load();
     let (out_tx, out_rx) = mpsc::channel();
     let (timer_tx, timer_rx) = mpsc::channel();
-    let mut app = rune::App::new(settings::spec()).window_options(settings::window()).keep_running().args(Vec::new());
+    let mut app = rune::App::new(settings::spec())
+        .window_options(settings::window())
+        .keep_running()
+        .args(Vec::new());
     if !open {
         app = app.windowless();
     }
-    let overlay = app.overlay(cards::overlay(&config), cards::Ui::new(config.clone(), out_tx, timer_tx));
+    let overlay = app.overlay(
+        cards::overlay(&config),
+        cards::Ui::new(config.clone(), out_tx, timer_tx),
+    );
     let window = app.handle();
     let panel = app.overlay(panel::overlay(), panel::state(window.clone()));
     let wiring = modules::Wiring::new(window.clone(), panel, overlay.clone());

@@ -20,11 +20,17 @@ fn kind_name<T: std::fmt::Debug>(t: T) -> String {
 }
 
 fn props(p: &[(String, String)]) -> Json {
-    Json::Object(p.iter().map(|(k, v)| (k.clone(), Json::String(v.clone()))).collect())
+    Json::Object(
+        p.iter()
+            .map(|(k, v)| (k.clone(), Json::String(v.clone())))
+            .collect(),
+    )
 }
 
 fn services(s: &[Service]) -> Json {
-    s.iter().map(|s| json!({ "uuid": s.uuid, "name": s.name, "audio": s.audio })).collect()
+    s.iter()
+        .map(|s| json!({ "uuid": s.uuid, "name": s.name, "audio": s.audio }))
+        .collect()
 }
 
 pub fn to_json(s: &State) -> Json {
@@ -64,7 +70,12 @@ pub fn to_json(s: &State) -> Json {
 }
 
 /// Waits until `done` holds for a snapshot or `timeout` passes; returns the last snapshot.
-fn wait(rx: &std::sync::mpsc::Receiver<Arc<State>>, bt: &Bluetooth, timeout: Duration, done: impl Fn(&State) -> bool) -> Arc<State> {
+fn wait(
+    rx: &std::sync::mpsc::Receiver<Arc<State>>,
+    bt: &Bluetooth,
+    timeout: Duration,
+    done: impl Fn(&State) -> bool,
+) -> Arc<State> {
     let end = Instant::now() + timeout;
     let mut last = bt.state();
     while !done(&last) {
@@ -83,7 +94,11 @@ fn ready(s: &State) -> bool {
 pub fn cli(argv: &[String]) -> i32 {
     let args: Vec<&str> = argv.iter().skip(2).map(String::as_str).collect();
     let sub = argv.get(1).map(String::as_str).unwrap_or("");
-    let role = if sub == "agent" { Role::Service } else { Role::Inspect };
+    let role = if sub == "agent" {
+        Role::Service
+    } else {
+        Role::Inspect
+    };
     let (bt, handle) = match spawn(role) {
         Ok(x) => x,
         Err(e) => {
@@ -93,10 +108,17 @@ pub fn cli(argv: &[String]) -> i32 {
     };
     let (rx, sub_guard) = bt.subscribe();
     let state = wait(&rx, &bt, Duration::from_secs(5), ready);
-    let secs = |i: usize, default: u64| args.get(i).and_then(|s| s.parse().ok()).map_or(Duration::from_secs(default), Duration::from_secs);
+    let secs = |i: usize, default: u64| {
+        args.get(i)
+            .and_then(|s| s.parse().ok())
+            .map_or(Duration::from_secs(default), Duration::from_secs)
+    };
     let code = match sub {
         "dump" => {
-            println!("{}", serde_json::to_string_pretty(&to_json(&state)).unwrap_or_default());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&to_json(&state)).unwrap_or_default()
+            );
             0
         }
         "scan" => match state.default_adapter.clone() {
@@ -105,13 +127,32 @@ pub fn cli(argv: &[String]) -> i32 {
                 1
             }
             Some(adapter) => {
-                bt.send(Command::StartDiscovery { adapter: adapter.clone() });
-                let s = wait(&rx, &bt, Duration::from_secs(3), |s| s.default_adapter().is_some_and(|a| a.discovering));
-                println!("discovering: {}", s.default_adapter().is_some_and(|a| a.discovering));
+                bt.send(Command::StartDiscovery {
+                    adapter: adapter.clone(),
+                });
+                let s = wait(&rx, &bt, Duration::from_secs(3), |s| {
+                    s.default_adapter().is_some_and(|a| a.discovering)
+                });
+                println!(
+                    "discovering: {}",
+                    s.default_adapter().is_some_and(|a| a.discovering)
+                );
                 let end = Instant::now() + secs(0, 5);
-                let s = wait(&rx, &bt, end.saturating_duration_since(Instant::now()) + Duration::from_millis(1), |_| Instant::now() >= end);
+                let s = wait(
+                    &rx,
+                    &bt,
+                    end.saturating_duration_since(Instant::now()) + Duration::from_millis(1),
+                    |_| Instant::now() >= end,
+                );
                 for d in s.nearby().filter(|d| d.rssi.is_some()) {
-                    println!("{:>5} dBm  {:<17}  {:?}/{:?}  {}", d.rssi.unwrap_or(0), d.address, d.kind, d.bearer, d.display_name());
+                    println!(
+                        "{:>5} dBm  {:<17}  {:?}/{:?}  {}",
+                        d.rssi.unwrap_or(0),
+                        d.address,
+                        d.kind,
+                        d.bearer,
+                        d.display_name()
+                    );
                     if args.contains(&"-v") {
                         println!("           {:?}", d.raw.properties);
                     }
@@ -120,19 +161,31 @@ pub fn cli(argv: &[String]) -> i32 {
                     println!("issue: {}", i.message);
                 }
                 bt.send(Command::StopDiscovery { adapter });
-                let s = wait(&rx, &bt, Duration::from_secs(5), |s| s.default_adapter().is_some_and(|a| !a.discovering));
-                println!("discovering after stop: {}", s.default_adapter().is_some_and(|a| a.discovering));
+                let s = wait(&rx, &bt, Duration::from_secs(5), |s| {
+                    s.default_adapter().is_some_and(|a| !a.discovering)
+                });
+                println!(
+                    "discovering after stop: {}",
+                    s.default_adapter().is_some_and(|a| a.discovering)
+                );
                 0
             }
         },
         "agent" => {
             let end = Instant::now() + secs(0, 3);
-            let s = wait(&rx, &bt, end.saturating_duration_since(Instant::now()) + Duration::from_millis(1), |_| Instant::now() >= end);
+            let s = wait(
+                &rx,
+                &bt,
+                end.saturating_duration_since(Instant::now()) + Duration::from_millis(1),
+                |_| Instant::now() >= end,
+            );
             println!("connection: {:?}; pairing: {:?}", s.connection, s.pairing);
             0
         }
         "set" => {
-            let (Some(prop), Some(value), Some(adapter)) = (args.first(), args.get(1), state.default_adapter.clone()) else {
+            let (Some(prop), Some(value), Some(adapter)) =
+                (args.first(), args.get(1), state.default_adapter.clone())
+            else {
                 eprintln!("usage: hokum bt debug set discoverable|pairable on|off");
                 return 2;
             };
@@ -146,7 +199,9 @@ pub fn cli(argv: &[String]) -> i32 {
                 }
             };
             bt.send(command);
-            let s = wait(&rx, &bt, Duration::from_secs(5), |s| s.default_adapter().is_some_and(|a| check(a) == on) || !s.issues.is_empty());
+            let s = wait(&rx, &bt, Duration::from_secs(5), |s| {
+                s.default_adapter().is_some_and(|a| check(a) == on) || !s.issues.is_empty()
+            });
             println!("{prop}: {}", s.default_adapter().is_some_and(check));
             for i in &s.issues {
                 println!("issue: {}", i.message);
@@ -154,7 +209,9 @@ pub fn cli(argv: &[String]) -> i32 {
             0
         }
         _ => {
-            eprintln!("usage: hokum bt debug dump | scan [seconds] | agent [seconds] | set discoverable|pairable on|off");
+            eprintln!(
+                "usage: hokum bt debug dump | scan [seconds] | agent [seconds] | set discoverable|pairable on|off"
+            );
             2
         }
     };

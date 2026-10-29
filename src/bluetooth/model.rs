@@ -81,13 +81,17 @@ impl State {
 
     /// The adapter the UI shows.
     pub fn default_adapter(&self) -> Option<&Adapter> {
-        self.default_adapter.as_ref().and_then(|id| self.adapter(id))
+        self.default_adapter
+            .as_ref()
+            .and_then(|id| self.adapter(id))
     }
 
     /// Devices of the default adapter.
     pub fn devices(&self) -> impl Iterator<Item = &Device> {
         let adapter = self.default_adapter.clone();
-        self.devices.iter().filter(move |d| Some(&d.adapter) == adapter.as_ref())
+        self.devices
+            .iter()
+            .filter(move |d| Some(&d.adapter) == adapter.as_ref())
     }
 
     /// Connected devices of the default adapter: level one's first list.
@@ -157,7 +161,10 @@ pub struct Adapter {
 impl Adapter {
     /// Alias, else name, else address.
     pub fn display_name(&self) -> &str {
-        [&self.alias, &self.name].into_iter().find(|s| !s.is_empty()).unwrap_or(&self.address)
+        [&self.alias, &self.name]
+            .into_iter()
+            .find(|s| !s.is_empty())
+            .unwrap_or(&self.address)
     }
 }
 
@@ -252,7 +259,11 @@ pub struct Device {
 impl Device {
     /// What to call it: the alias (which BlueZ keeps filled in).
     pub fn display_name(&self) -> &str {
-        if self.alias.is_empty() { self.name.as_deref().unwrap_or(&self.address) } else { &self.alias }
+        if self.alias.is_empty() {
+            self.name.as_deref().unwrap_or(&self.address)
+        } else {
+            &self.alias
+        }
     }
 
     /// Paired or bonded: shows under "paired" and connects with one click.
@@ -261,7 +272,9 @@ impl Device {
     }
 
     pub fn service(&self, uuid: &str) -> Option<&Service> {
-        self.services.iter().find(|s| s.uuid.eq_ignore_ascii_case(uuid))
+        self.services
+            .iter()
+            .find(|s| s.uuid.eq_ignore_ascii_case(uuid))
     }
 }
 
@@ -370,7 +383,10 @@ impl Service {
         let uuid = uuid.to_ascii_lowercase();
         let (name, audio) = match service_name(&uuid) {
             Some((name, audio)) => (name.to_owned(), audio),
-            None => (short_uuid(&uuid).map_or_else(|| uuid.clone(), |s| format!("0x{s:04x}")), false),
+            None => (
+                short_uuid(&uuid).map_or_else(|| uuid.clone(), |s| format!("0x{s:04x}")),
+                false,
+            ),
         };
         Service { uuid, name, audio }
     }
@@ -554,45 +570,101 @@ pub enum Severity {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     /// Turns the radio on or off. Remembered by BlueZ across restarts.
-    SetPowered { adapter: AdapterId, on: bool },
-    SetDiscoverable { adapter: AdapterId, on: bool },
+    SetPowered {
+        adapter: AdapterId,
+        on: bool,
+    },
+    SetDiscoverable {
+        adapter: AdapterId,
+        on: bool,
+    },
     /// Seconds; 0 keeps it discoverable until turned off.
-    SetDiscoverableTimeout { adapter: AdapterId, seconds: u32 },
-    SetPairable { adapter: AdapterId, on: bool },
+    SetDiscoverableTimeout {
+        adapter: AdapterId,
+        seconds: u32,
+    },
+    SetPairable {
+        adapter: AdapterId,
+        on: bool,
+    },
     /// Seconds; 0 keeps it pairable until turned off.
-    SetPairableTimeout { adapter: AdapterId, seconds: u32 },
+    SetPairableTimeout {
+        adapter: AdapterId,
+        seconds: u32,
+    },
     /// Renames the adapter as other devices see it; "" returns to the system name.
-    SetAdapterAlias { adapter: AdapterId, alias: String },
+    SetAdapterAlias {
+        adapter: AdapterId,
+        alias: String,
+    },
     /// Starts scanning (BR/EDR and LE). The UI starts it when the scan view opens and stops
     /// it when it closes; the backend also stops it when the UI goes away.
-    StartDiscovery { adapter: AdapterId },
-    StopDiscovery { adapter: AdapterId },
+    StartDiscovery {
+        adapter: AdapterId,
+    },
+    StopDiscovery {
+        adapter: AdapterId,
+    },
     /// Connects every auto-connectable profile (`Device1.Connect`).
-    Connect { device: DeviceId },
-    Disconnect { device: DeviceId },
+    Connect {
+        device: DeviceId,
+    },
+    Disconnect {
+        device: DeviceId,
+    },
     /// Pairs, then on success trusts and connects it: what people mean by "pair".
     /// Code prompts arrive as [`State::pairing`].
-    Pair { device: DeviceId },
+    Pair {
+        device: DeviceId,
+    },
     /// Abandons a pairing in progress (`CancelPairing`), including a displayed code.
-    CancelPair { device: DeviceId },
-    Trust { device: DeviceId },
-    Untrust { device: DeviceId },
+    CancelPair {
+        device: DeviceId,
+    },
+    Trust {
+        device: DeviceId,
+    },
+    Untrust {
+        device: DeviceId,
+    },
     /// Refuses all connections from it (and disconnects it).
-    Block { device: DeviceId },
-    Unblock { device: DeviceId },
+    Block {
+        device: DeviceId,
+    },
+    Unblock {
+        device: DeviceId,
+    },
     /// Forgets it: unpairs and drops it from BlueZ (`Adapter1.RemoveDevice`).
-    Remove { device: DeviceId },
+    Remove {
+        device: DeviceId,
+    },
     /// Renames it locally; "" returns to the name it reports.
-    SetAlias { device: DeviceId, alias: String },
+    SetAlias {
+        device: DeviceId,
+        alias: String,
+    },
     /// Connects one profile by UUID (`Device1.ConnectProfile`).
-    ConnectProfile { device: DeviceId, uuid: String },
-    DisconnectProfile { device: DeviceId, uuid: String },
+    ConnectProfile {
+        device: DeviceId,
+        uuid: String,
+    },
+    DisconnectProfile {
+        device: DeviceId,
+        uuid: String,
+    },
     /// Answers [`State::pairing`] with the same `id`; ignored if that request is gone.
-    PairingReply { id: u64, reply: Reply },
+    PairingReply {
+        id: u64,
+        reply: Reply,
+    },
     /// Shows and acts on another adapter.
-    SelectAdapter { adapter: AdapterId },
+    SelectAdapter {
+        adapter: AdapterId,
+    },
     /// Drops an issue from `State::issues` once the user has seen it.
-    DismissIssue { id: u64 },
+    DismissIssue {
+        id: u64,
+    },
 }
 
 type Listener = Box<dyn Fn(&Arc<State>) + Send + Sync>;
@@ -613,7 +685,11 @@ pub struct Bluetooth {
 impl Bluetooth {
     /// The latest snapshot.
     pub fn state(&self) -> Arc<State> {
-        self.shared.state.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.shared
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Asks the backend for a change. Never blocks; dropped silently if the backend is gone.
@@ -630,8 +706,15 @@ impl Bluetooth {
             *next += 1;
             *next
         };
-        self.shared.listeners.lock().unwrap_or_else(|e| e.into_inner()).push((id, Box::new(f)));
-        Subscription { shared: Arc::downgrade(&self.shared), id }
+        self.shared
+            .listeners
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((id, Box::new(f)));
+        Subscription {
+            shared: Arc::downgrade(&self.shared),
+            id,
+        }
     }
 
     /// Every new snapshot on a channel, for code that would rather poll.
@@ -654,7 +737,11 @@ pub struct Subscription {
 impl Drop for Subscription {
     fn drop(&mut self) {
         if let Some(shared) = self.shared.upgrade() {
-            shared.listeners.lock().unwrap_or_else(|e| e.into_inner()).retain(|(id, _)| *id != self.id);
+            shared
+                .listeners
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .retain(|(id, _)| *id != self.id);
         }
     }
 }
@@ -679,14 +766,23 @@ impl Driver {
             *current = state.clone();
             state
         };
-        for (_, f) in shared.listeners.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+        for (_, f) in shared
+            .listeners
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+        {
             f(&state);
         }
     }
 
     /// The latest published snapshot.
     pub fn current(&self) -> Arc<State> {
-        self.shared.state.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.shared
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Commands from the UI, in order. Disconnected once every [`Bluetooth`] is dropped.
@@ -697,7 +793,12 @@ impl Driver {
     /// Splits into a [`Publisher`] (shareable across threads) and the command receiver, for a
     /// backend that waits on commands on one thread and publishes from another.
     pub fn split(self) -> (Publisher, Receiver<Command>) {
-        (Publisher { shared: self.shared }, self.commands)
+        (
+            Publisher {
+                shared: self.shared,
+            },
+            self.commands,
+        )
     }
 }
 
@@ -714,15 +815,32 @@ impl Publisher {
     }
 
     pub fn current(&self) -> Arc<State> {
-        self.shared.state.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.shared
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 }
 
 /// A connected pair: give [`Bluetooth`] to the UI and [`Driver`] to the backend's thread.
 pub fn channel() -> (Bluetooth, Driver) {
-    let shared = Arc::new(Shared { state: Mutex::new(Arc::new(State::default())), listeners: Mutex::new(Vec::new()), next: Mutex::new(0) });
+    let shared = Arc::new(Shared {
+        state: Mutex::new(Arc::new(State::default())),
+        listeners: Mutex::new(Vec::new()),
+        next: Mutex::new(0),
+    });
     let (tx, rx) = mpsc::channel();
-    (Bluetooth { shared: shared.clone(), commands: tx }, Driver { shared, commands: rx })
+    (
+        Bluetooth {
+            shared: shared.clone(),
+            commands: tx,
+        },
+        Driver {
+            shared,
+            commands: rx,
+        },
+    )
 }
 
 /// Which backend the Bluetooth module runs.
@@ -753,7 +871,10 @@ mod tests {
         assert_eq!(s.uuid, "0000110b-0000-1000-8000-00805f9b34fb");
         assert_eq!(s.name, "Audio Sink");
         assert!(s.audio);
-        assert_eq!(Service::new("0000abcd-0000-1000-8000-00805f9b34fb").name, "0xabcd");
+        assert_eq!(
+            Service::new("0000abcd-0000-1000-8000-00805f9b34fb").name,
+            "0xabcd"
+        );
         let custom = "f000aa00-0451-4000-b000-000000000000";
         assert_eq!(Service::new(custom).name, custom);
     }
@@ -776,7 +897,12 @@ mod tests {
         driver.publish(State::default());
         assert!(rx.try_recv().is_err());
         let device = DeviceId("/org/bluez/hci0/dev_00_11_22_33_44_55".into());
-        bt.send(Command::Connect { device: device.clone() });
-        assert_eq!(driver.commands().recv().unwrap(), Command::Connect { device });
+        bt.send(Command::Connect {
+            device: device.clone(),
+        });
+        assert_eq!(
+            driver.commands().recv().unwrap(),
+            Command::Connect { device }
+        );
     }
 }

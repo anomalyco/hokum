@@ -110,23 +110,51 @@ impl Width {
 pub enum Position {
     TopRight,
     TopLeft,
+    TopCenter,
     BottomRight,
     BottomLeft,
+    BottomCenter,
+}
+
+/// Where a position sits across the screen.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Side {
+    Left,
+    Center,
+    Right,
 }
 
 impl Position {
-    pub fn right(self) -> bool {
-        matches!(self, Position::TopRight | Position::BottomRight)
+    pub const ALL: [Position; 6] = [
+        Position::TopLeft,
+        Position::TopCenter,
+        Position::TopRight,
+        Position::BottomLeft,
+        Position::BottomCenter,
+        Position::BottomRight,
+    ];
+
+    pub fn side(self) -> Side {
+        match self {
+            Position::TopLeft | Position::BottomLeft => Side::Left,
+            Position::TopCenter | Position::BottomCenter => Side::Center,
+            Position::TopRight | Position::BottomRight => Side::Right,
+        }
     }
     pub fn bottom(self) -> bool {
-        matches!(self, Position::BottomRight | Position::BottomLeft)
+        matches!(
+            self,
+            Position::BottomRight | Position::BottomLeft | Position::BottomCenter
+        )
     }
     pub fn word(self) -> &'static str {
         match self {
             Position::TopRight => "top-right",
             Position::TopLeft => "top-left",
+            Position::TopCenter => "top-center",
             Position::BottomRight => "bottom-right",
             Position::BottomLeft => "bottom-left",
+            Position::BottomCenter => "bottom-center",
         }
     }
 }

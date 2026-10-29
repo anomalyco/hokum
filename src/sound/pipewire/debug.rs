@@ -39,11 +39,22 @@ fn run(args: &[String]) -> Result<(), String> {
     let audio = super::start()?;
     let (rx, _sub) = audio.subscribe();
     let state = wait_connected(&audio, &rx)?;
-    let arg = |i: usize| args.get(i).map(String::as_str).ok_or_else(|| USAGE.to_string());
-    let num = |i: usize| arg(i)?.parse::<f32>().map_err(|e| format!("{}: {e}", arg(i).unwrap_or_default()));
+    let arg = |i: usize| {
+        args.get(i)
+            .map(String::as_str)
+            .ok_or_else(|| USAGE.to_string())
+    };
+    let num = |i: usize| {
+        arg(i)?
+            .parse::<f32>()
+            .map_err(|e| format!("{}: {e}", arg(i).unwrap_or_default()))
+    };
     let command = match arg(0)? {
         "dump" => {
-            println!("{}", serde_json::to_string_pretty(&state_json(&state)).unwrap_or_default());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&state_json(&state)).unwrap_or_default()
+            );
             return Ok(());
         }
         "watch" => {
@@ -69,11 +80,17 @@ fn run(args: &[String]) -> Result<(), String> {
                 targets.push(target(&state, a)?);
                 i += 1;
             }
-            audio.send(Command::SetMetering { targets: targets.clone(), on: true });
+            audio.send(Command::SetMetering {
+                targets: targets.clone(),
+                on: true,
+            });
             let end = Instant::now() + Duration::from_secs_f64(secs);
             while let Some(left) = end.checked_duration_since(Instant::now()) {
                 if let Ok(s) = rx.recv_timeout(left) {
-                    let levels: Vec<String> = targets.iter().map(|t| format!("{t:?}={:.3}", level(&s, *t).unwrap_or(-1.0))).collect();
+                    let levels: Vec<String> = targets
+                        .iter()
+                        .map(|t| format!("{t:?}={:.3}", level(&s, *t).unwrap_or(-1.0)))
+                        .collect();
                     println!("{}", levels.join(" "));
                 }
             }
@@ -81,38 +98,88 @@ fn run(args: &[String]) -> Result<(), String> {
             settle(&rx, Duration::from_millis(300));
             return Ok(());
         }
-        "volume" => Command::SetVolume { target: target(&state, arg(1)?)?, volume: num(2)? },
-        "balance" => Command::SetBalance { target: target(&state, arg(1)?)?, balance: num(2)? },
-        "mute" => Command::SetMute { target: target(&state, arg(1)?)?, mute: matches!(arg(2)?, "on" | "true" | "1") },
-        "default" => Command::SetDefault { device: device(&state, arg(1)?)? },
-        "port" => Command::SetPort { device: device(&state, arg(1)?)?, port: arg(2)?.into() },
-        "profile" => Command::SetProfile { card: card(&state, arg(1)?)?, profile: arg(2)?.into() },
+        "volume" => Command::SetVolume {
+            target: target(&state, arg(1)?)?,
+            volume: num(2)?,
+        },
+        "balance" => Command::SetBalance {
+            target: target(&state, arg(1)?)?,
+            balance: num(2)?,
+        },
+        "mute" => Command::SetMute {
+            target: target(&state, arg(1)?)?,
+            mute: matches!(arg(2)?, "on" | "true" | "1"),
+        },
+        "default" => Command::SetDefault {
+            device: device(&state, arg(1)?)?,
+        },
+        "port" => Command::SetPort {
+            device: device(&state, arg(1)?)?,
+            port: arg(2)?.into(),
+        },
+        "profile" => Command::SetProfile {
+            card: card(&state, arg(1)?)?,
+            profile: arg(2)?.into(),
+        },
         "move" => {
-            let Target::Stream(stream) = target(&state, arg(1)?)? else { return Err("not a stream".into()) };
-            Command::MoveStream { stream, device: device(&state, arg(2)?)? }
+            let Target::Stream(stream) = target(&state, arg(1)?)? else {
+                return Err("not a stream".into());
+            };
+            Command::MoveStream {
+                stream,
+                device: device(&state, arg(2)?)?,
+            }
         }
-        "create-virtual" => Command::CreateVirtualSink { name: arg(1)?.into() },
-        "remove-virtual" => Command::RemoveVirtualSink { device: device(&state, arg(1)?)? },
+        "create-virtual" => Command::CreateVirtualSink {
+            name: arg(1)?.into(),
+        },
+        "remove-virtual" => Command::RemoveVirtualSink {
+            device: device(&state, arg(1)?)?,
+        },
         "rate-quantum" => {
             let opt = |v: f32| (v > 0.0).then_some(v as u32);
-            Command::SetRateQuantum { rate: opt(num(1)?), quantum: opt(num(2)?) }
+            Command::SetRateQuantum {
+                rate: opt(num(1)?),
+                quantum: opt(num(2)?),
+            }
         }
-        "link" => Command::Link { output_port: num(1)? as Id, input_port: num(2)? as Id },
-        "unlink" => Command::Unlink { link: num(1)? as Id },
+        "link" => Command::Link {
+            output_port: num(1)? as Id,
+            input_port: num(2)? as Id,
+        },
+        "unlink" => Command::Unlink {
+            link: num(1)? as Id,
+        },
         _ => return Err(USAGE.into()),
     };
     audio.send(command);
     let state = settle(&rx, Duration::from_millis(500)).unwrap_or(state);
-    println!("{}", serde_json::to_string_pretty(&state_json(&state)).unwrap_or_default());
-    if state.issues.is_empty() { Ok(()) } else { Err(state.issues.iter().map(|i| i.message.clone()).collect::<Vec<_>>().join("; ")) }
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&state_json(&state)).unwrap_or_default()
+    );
+    if state.issues.is_empty() {
+        Ok(())
+    } else {
+        Err(state
+            .issues
+            .iter()
+            .map(|i| i.message.clone())
+            .collect::<Vec<_>>()
+            .join("; "))
+    }
 }
 
 fn wait_connected(audio: &Audio, rx: &Receiver<Arc<State>>) -> Result<Arc<State>, String> {
     let end = Instant::now() + Duration::from_secs(5);
     let mut state = audio.state();
     while state.connection != Connection::Connected {
-        let left = end.checked_duration_since(Instant::now()).ok_or_else(|| format!("not connected: {:?}", state.connection))?;
-        state = rx.recv_timeout(left).map_err(|_| format!("not connected: {:?}", state.connection))?;
+        let left = end
+            .checked_duration_since(Instant::now())
+            .ok_or_else(|| format!("not connected: {:?}", state.connection))?;
+        state = rx
+            .recv_timeout(left)
+            .map_err(|_| format!("not connected: {:?}", state.connection))?;
     }
     Ok(settle(rx, Duration::from_millis(200)).unwrap_or(state))
 }
@@ -150,7 +217,11 @@ fn target(s: &State, a: &str) -> Result<Target, String> {
     if let Some(d) = s.devices.iter().find(|d| d.name == a || d.description == a) {
         return Ok(Target::Device(d.id));
     }
-    if let Some(st) = s.streams.iter().find(|st| st.app_name == a || st.media_name == a) {
+    if let Some(st) = s
+        .streams
+        .iter()
+        .find(|st| st.app_name == a || st.media_name == a)
+    {
         return Ok(Target::Stream(st.id));
     }
     Err(format!("no device or stream {a:?}"))
@@ -169,13 +240,49 @@ fn card(s: &State, a: &str) -> Result<Id, String> {
     {
         return Ok(id);
     }
-    s.cards.iter().find(|c| c.name == a || c.description == a).map(|c| c.id).ok_or_else(|| format!("no card {a:?}"))
+    s.cards
+        .iter()
+        .find(|c| c.name == a || c.description == a)
+        .map(|c| c.id)
+        .ok_or_else(|| format!("no card {a:?}"))
 }
 
 fn summary(s: &State) -> String {
-    let dev: Vec<String> = s.devices.iter().map(|d| format!("{}:{:.2}{}", d.id, d.volume.combined(), if d.mute { "M" } else { "" })).collect();
-    let st: Vec<String> = s.streams.iter().map(|x| format!("{}:{:.2}{}→{:?}", x.id, x.volume.combined(), if x.mute { "M" } else { "" }, x.target_device)).collect();
-    format!("rev {} {:?} sink={:?} source={:?} devices[{}] streams[{}] issues={}", s.revision, s.connection, s.default_sink, s.default_source, dev.join(" "), st.join(" "), s.issues.len())
+    let dev: Vec<String> = s
+        .devices
+        .iter()
+        .map(|d| {
+            format!(
+                "{}:{:.2}{}",
+                d.id,
+                d.volume.combined(),
+                if d.mute { "M" } else { "" }
+            )
+        })
+        .collect();
+    let st: Vec<String> = s
+        .streams
+        .iter()
+        .map(|x| {
+            format!(
+                "{}:{:.2}{}→{:?}",
+                x.id,
+                x.volume.combined(),
+                if x.mute { "M" } else { "" },
+                x.target_device
+            )
+        })
+        .collect();
+    format!(
+        "rev {} {:?} sink={:?} source={:?} devices[{}] streams[{}] issues={}",
+        s.revision,
+        s.connection,
+        s.default_sink,
+        s.default_source,
+        dev.join(" "),
+        st.join(" "),
+        s.issues.len()
+    )
 }
 
 fn round(v: f32) -> f64 {

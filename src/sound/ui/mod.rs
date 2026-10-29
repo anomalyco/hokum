@@ -23,7 +23,9 @@ use std::sync::{Arc, Mutex};
 use rune::{Drag, El, Image, Phase, TextEdit, Tx, WheelEvent};
 use rune_kit::Kit;
 
-use crate::sound::model::{Audio, Command, Id, MAX_VOLUME, State, StreamKind, Subscription, Target};
+use crate::sound::model::{
+    Audio, Command, Id, MAX_VOLUME, State, StreamKind, Subscription, Target,
+};
 use slider::Slide;
 
 /// When Hokum itself last changed a volume, mute or default device.
@@ -31,7 +33,10 @@ static TOUCHED: Mutex<Option<std::time::Instant>> = Mutex::new(None);
 
 /// Whether Hokum changed the output a moment ago (the volume card stays away then).
 pub fn touched_recently() -> bool {
-    TOUCHED.lock().unwrap_or_else(|e| e.into_inner()).is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(1500))
+    TOUCHED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(1500))
 }
 
 /// The state every handler gets: the window's (or the tray panel's).
@@ -78,7 +83,10 @@ pub struct Meters {
 
 impl Meters {
     pub fn new(audio: Audio) -> Arc<Meters> {
-        Arc::new(Meters { audio, views: Mutex::new([HashSet::new(), HashSet::new()]) })
+        Arc::new(Meters {
+            audio,
+            views: Mutex::new([HashSet::new(), HashSet::new()]),
+        })
     }
 
     pub fn want(&self, mode: Mode, targets: HashSet<Target>) {
@@ -93,10 +101,16 @@ impl Meters {
         let on: Vec<Target> = after.difference(&before).copied().collect();
         let off: Vec<Target> = before.difference(&after).copied().collect();
         if !on.is_empty() {
-            self.audio.send(Command::SetMetering { targets: on, on: true });
+            self.audio.send(Command::SetMetering {
+                targets: on,
+                on: true,
+            });
         }
         if !off.is_empty() {
-            self.audio.send(Command::SetMetering { targets: off, on: false });
+            self.audio.send(Command::SetMetering {
+                targets: off,
+                on: false,
+            });
         }
     }
 }
@@ -127,7 +141,9 @@ pub struct Ui {
 
 impl Ui {
     pub fn new(audio: Option<Audio>, mode: Mode) -> Ui {
-        let state = audio.as_ref().map_or_else(|| Arc::new(State::default()), Audio::state);
+        let state = audio
+            .as_ref()
+            .map_or_else(|| Arc::new(State::default()), Audio::state);
         Ui {
             audio: state,
             meters: audio.clone().map(Meters::new),
@@ -148,8 +164,15 @@ impl Ui {
     }
 
     /// Swaps the backend (`None` when the module turns off), keeping what's on screen.
-    pub fn attach(&mut self, audio: Option<Audio>, meters: Option<Arc<Meters>>, subscription: Option<Subscription>) {
-        self.audio = audio.as_ref().map_or_else(|| Arc::new(State::default()), Audio::state);
+    pub fn attach(
+        &mut self,
+        audio: Option<Audio>,
+        meters: Option<Arc<Meters>>,
+        subscription: Option<Subscription>,
+    ) {
+        self.audio = audio
+            .as_ref()
+            .map_or_else(|| Arc::new(State::default()), Audio::state);
         self.handle = audio;
         self.meters = meters;
         self._subscription = subscription.map(Arc::new);
@@ -160,7 +183,10 @@ impl Ui {
     }
 
     pub fn send(&self, c: Command) {
-        if matches!(c, Command::SetVolume { .. } | Command::SetMute { .. } | Command::SetDefault { .. }) {
+        if matches!(
+            c,
+            Command::SetVolume { .. } | Command::SetMute { .. } | Command::SetDefault { .. }
+        ) {
             *TOUCHED.lock().unwrap_or_else(|e| e.into_inner()) = Some(std::time::Instant::now());
         }
         if let Some(a) = &self.handle {
@@ -205,7 +231,9 @@ impl Ui {
     }
 
     pub fn scale(&self, t: Target, v: f32) -> f32 {
-        self.slide.filter(|s| s.target == t).map_or_else(|| slider::scale_for(v), |s| s.scale)
+        self.slide
+            .filter(|s| s.target == t)
+            .map_or_else(|| slider::scale_for(v), |s| s.scale)
     }
 
     pub fn muted(&self, t: Target) -> bool {
@@ -216,17 +244,30 @@ impl Ui {
         let v = v.clamp(0.0, MAX_VOLUME);
         self.pending.insert(t, (v, self.audio.revision));
         if self.muted(t) && v > 0.0 {
-            self.send(Command::SetMute { target: t, mute: false });
+            self.send(Command::SetMute {
+                target: t,
+                mute: false,
+            });
         }
-        self.send(Command::SetVolume { target: t, volume: v });
+        self.send(Command::SetVolume {
+            target: t,
+            volume: v,
+        });
     }
 
     pub fn slide(&mut self, t: Target, d: &Drag) {
         if d.phase == Phase::Down {
             let start = self.shown(t);
-            self.slide = Some(Slide { target: t, scale: slider::scale_for(start), start, value: start });
+            self.slide = Some(Slide {
+                target: t,
+                scale: slider::scale_for(start),
+                start,
+                value: start,
+            });
         }
-        let Some(mut s) = self.slide.filter(|s| s.target == t) else { return };
+        let Some(mut s) = self.slide.filter(|s| s.target == t) else {
+            return;
+        };
         if d.phase == Phase::Up && d.cancelled() {
             self.slide = None;
             self.set_volume(t, s.start);
@@ -253,7 +294,10 @@ impl Ui {
         if e.precise {
             let v = self.shown(t);
             let ceiling = if v > 1.0 { MAX_VOLUME } else { 1.0 };
-            self.set_volume(t, (v + d * 0.002).clamp(0.0, ceiling.max(v.min(MAX_VOLUME))));
+            self.set_volume(
+                t,
+                (v + d * 0.002).clamp(0.0, ceiling.max(v.min(MAX_VOLUME))),
+            );
         } else {
             self.step(t, if d > 0.0 { 1 } else { -1 });
         }
@@ -273,7 +317,10 @@ impl Ui {
     }
 
     pub fn set_balance(&mut self, t: Target, b: f32) {
-        self.send(Command::SetBalance { target: t, balance: b });
+        self.send(Command::SetBalance {
+            target: t,
+            balance: b,
+        });
     }
 
     pub fn toggle(&mut self, r: Row) {
@@ -284,7 +331,10 @@ impl Ui {
 
     /// Streams the first level shows: playback that's producing sound.
     pub fn playing(&self) -> impl Iterator<Item = &crate::sound::model::Stream> {
-        self.audio.streams.iter().filter(|s| s.kind == StreamKind::Playback && !s.corked)
+        self.audio
+            .streams
+            .iter()
+            .filter(|s| s.kind == StreamKind::Playback && !s.corked)
     }
 
     /// What's on screen, for [`Meters`].
@@ -304,7 +354,12 @@ impl Ui {
         out.extend(a.default_source.map(Target::Device));
         out.extend(self.playing().map(|s| Target::Stream(s.id)));
         if self.open.contains(&Row::Input) {
-            out.extend(a.streams.iter().filter(|s| s.kind == StreamKind::Record).map(|s| Target::Stream(s.id)));
+            out.extend(
+                a.streams
+                    .iter()
+                    .filter(|s| s.kind == StreamKind::Record)
+                    .map(|s| Target::Stream(s.id)),
+            );
         }
         out
     }
@@ -337,7 +392,10 @@ impl Ui {
         let Some(cache) = &self.cache else { return };
         for s in &self.audio.streams {
             let key = Self::icon_key(s);
-            self.icons.entry(key).or_insert_with(|| icons::for_app(&s.icon_name, &s.binary, &s.app_name).map(|p| cache.file(p, 40.0, 2.0)));
+            self.icons.entry(key).or_insert_with(|| {
+                icons::for_app(&s.icon_name, &s.binary, &s.app_name)
+                    .map(|p| cache.file(p, 40.0, 2.0))
+            });
         }
     }
 
@@ -347,7 +405,10 @@ impl Ui {
 
     /// Esc: close what's open, one layer at a time.
     pub fn escape(&mut self) -> bool {
-        if self.menu.take().is_some() || self.naming.take().is_some() || self.route_from.take().is_some() {
+        if self.menu.take().is_some()
+            || self.naming.take().is_some()
+            || self.route_from.take().is_some()
+        {
             return true;
         }
         if !self.open.is_empty() {
@@ -422,7 +483,11 @@ pub mod scenes {
         let mut a = crate::sound::mock::sample();
         let headset = a.sinks().find(|d| d.is_bluetooth()).map(|d| d.id);
         if let Some(id) = headset {
-            crate::sound::mock::apply(&mut a, Command::SetDefault { device: id }, &mut HashSet::new());
+            crate::sound::mock::apply(
+                &mut a,
+                Command::SetDefault { device: id },
+                &mut HashSet::new(),
+            );
         }
         s.audio = Arc::new(a);
         decode_now(s);
@@ -453,7 +518,10 @@ pub mod scenes {
 
     pub fn issue(s: &mut Ui) {
         let mut a = crate::sound::mock::sample();
-        a.issues.push(crate::sound::model::Issue { severity: crate::sound::model::Severity::Warning, message: "Couldn't switch to LDAC".into() });
+        a.issues.push(crate::sound::model::Issue {
+            severity: crate::sound::model::Severity::Warning,
+            message: "Couldn't switch to LDAC".into(),
+        });
         s.audio = Arc::new(a);
         decode_now(s);
     }
@@ -480,7 +548,15 @@ mod tests {
         m.want(Mode::Window, HashSet::new());
         let got: Vec<Command> = driver.commands().try_iter().collect();
         assert_eq!(got.len(), 2);
-        assert!(matches!(&got[0], Command::SetMetering { on: true, targets } if targets.len() == 2));
-        assert_eq!(got[1], Command::SetMetering { targets: vec![b], on: false });
+        assert!(
+            matches!(&got[0], Command::SetMetering { on: true, targets } if targets.len() == 2)
+        );
+        assert_eq!(
+            got[1],
+            Command::SetMetering {
+                targets: vec![b],
+                on: false
+            }
+        );
     }
 }

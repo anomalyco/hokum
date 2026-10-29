@@ -16,7 +16,7 @@
 
 use std::time::Duration;
 
-use rhai::{Dynamic, Engine, Map, Scope, AST};
+use rhai::{AST, Dynamic, Engine, Map, Scope};
 
 use crate::card::{Note, Timeout};
 
@@ -58,7 +58,10 @@ impl Script {
         engine.set_max_array_size(1024);
         engine.set_max_map_size(256);
         let ast = engine.compile(src).map_err(|e| e.to_string())?;
-        if !ast.iter_functions().any(|f| f.name == "notify" && f.params.len() == 1) {
+        if !ast
+            .iter_functions()
+            .any(|f| f.name == "notify" && f.params.len() == 1)
+        {
             return Err("the script needs a function `notify(n)`".into());
         }
         Ok(Script { engine, ast })
@@ -66,7 +69,10 @@ impl Script {
 
     /// Runs `notify(n)`. False when the script dropped it; errors leave `n` as it was.
     pub fn apply(&self, n: &mut Note) -> Result<bool, String> {
-        let result: Dynamic = self.engine.call_fn(&mut Scope::new(), &self.ast, "notify", (to_map(n),)).map_err(|e| e.to_string())?;
+        let result: Dynamic = self
+            .engine
+            .call_fn(&mut Scope::new(), &self.ast, "notify", (to_map(n),))
+            .map_err(|e| e.to_string())?;
         if let Some(keep) = result.clone().try_cast::<bool>() {
             return Ok(keep);
         }
@@ -86,9 +92,16 @@ fn to_map(n: &Note) -> Map {
     m.insert("app".into(), n.app.clone().into());
     m.insert("summary".into(), n.summary.clone().into());
     m.insert("body".into(), n.body.clone().into());
-    m.insert("context".into(), n.context.clone().unwrap_or_default().into());
+    m.insert(
+        "context".into(),
+        n.context.clone().unwrap_or_default().into(),
+    );
     m.insert("urgency".into(), (n.urgency as i64).into());
-    m.insert("value".into(), n.value.map_or(Dynamic::UNIT, |v| Dynamic::from_float(v as f64)));
+    m.insert(
+        "value".into(),
+        n.value
+            .map_or(Dynamic::UNIT, |v| Dynamic::from_float(v as f64)),
+    );
     m.insert(
         "timeout".into(),
         match n.timeout {
@@ -97,7 +110,10 @@ fn to_map(n: &Note) -> Map {
             Timeout::After(d) => Dynamic::from_float(d.as_secs_f64()),
         },
     );
-    m.insert("template".into(), n.template.clone().map_or(Dynamic::UNIT, Into::into));
+    m.insert(
+        "template".into(),
+        n.template.clone().map_or(Dynamic::UNIT, Into::into),
+    );
     let actions: rhai::Array = n
         .actions
         .iter()
@@ -119,7 +135,9 @@ fn text(m: &Map, key: &str) -> Option<String> {
 
 fn number(m: &Map, key: &str) -> Option<f64> {
     let v = m.get(key)?;
-    v.as_float().ok().or_else(|| v.as_int().ok().map(|i| i as f64))
+    v.as_float()
+        .ok()
+        .or_else(|| v.as_int().ok().map(|i| i as f64))
 }
 
 fn from_map(n: &mut Note, m: &Map) {
@@ -142,7 +160,11 @@ fn from_map(n: &mut Note, m: &Map) {
     if m.get("timeout").is_some_and(|v| v.is_unit()) {
         n.timeout = Timeout::Default;
     } else if let Some(s) = number(m, "timeout") {
-        n.timeout = if s <= 0.0 { Timeout::Never } else { Timeout::After(Duration::from_secs_f64(s.min(86_400.0))) };
+        n.timeout = if s <= 0.0 {
+            Timeout::Never
+        } else {
+            Timeout::After(Duration::from_secs_f64(s.min(86_400.0)))
+        };
     }
     n.template = text(m, "template").filter(|t| !t.is_empty());
     if let Some(list) = m.get("actions").and_then(|v| v.clone().into_array().ok()) {
@@ -175,13 +197,24 @@ fn notify(n) {
         .unwrap();
         let mut n = Note::new(1, "Slack", "[anoma-ly] in #ops", "deploy failed");
         assert_eq!(s.apply(&mut n), Ok(true));
-        assert_eq!((n.summary.as_str(), n.urgency, n.timeout, n.template.as_deref()), ("in #ops", 2, Timeout::Never, Some("chat")));
+        assert_eq!(
+            (
+                n.summary.as_str(),
+                n.urgency,
+                n.timeout,
+                n.template.as_deref()
+            ),
+            ("in #ops", 2, Timeout::Never, Some("chat"))
+        );
         let mut m = Note::new(2, "Spotify", "song", "");
         assert_eq!(s.apply(&mut m), Ok(false));
 
         let looping = Script::compile("fn notify(n) { loop {} }").unwrap();
         let mut k = Note::new(3, "x", "y", "");
-        assert!(looping.apply(&mut k).is_err(), "the operation budget stops a runaway script");
+        assert!(
+            looping.apply(&mut k).is_err(),
+            "the operation budget stops a runaway script"
+        );
         assert!(Script::compile("fn other(n) { n }").is_err());
         Script::compile(STARTER).unwrap();
     }

@@ -50,7 +50,9 @@ impl Osd {
     /// snapshot, a switch to another device and changes Hokum made itself (`local`) only move
     /// the baseline.
     pub fn see(&mut self, s: &crate::sound::model::State, local: bool) -> Option<Note> {
-        let sink = s.default_sink().filter(|_| s.connection == crate::sound::model::Connection::Connected);
+        let sink = s
+            .default_sink()
+            .filter(|_| s.connection == crate::sound::model::Connection::Connected);
         let Some(d) = sink else {
             self.last = None;
             return None;
@@ -65,12 +67,17 @@ impl Osd {
 }
 
 fn device_slot(id: &crate::bluetooth::model::DeviceId) -> u32 {
-    let h = id.0.bytes().fold(2166136261u32, |h, b| (h ^ b as u32).wrapping_mul(16777619));
+    let h =
+        id.0.bytes()
+            .fold(2166136261u32, |h, b| (h ^ b as u32).wrapping_mul(16777619));
     DEVICE_IDS + (h % 4096) * 2
 }
 
 fn device_icon(d: &crate::bluetooth::model::Device) -> Option<Source> {
-    Some(d.icon.as_str()).filter(|i| !i.is_empty()).and_then(icon).or_else(|| icon("bluetooth"))
+    Some(d.icon.as_str())
+        .filter(|i| !i.is_empty())
+        .and_then(icon)
+        .or_else(|| icon("bluetooth"))
 }
 
 pub fn connected_note(d: &crate::bluetooth::model::Device) -> Note {
@@ -85,7 +92,12 @@ pub fn connected_note(d: &crate::bluetooth::model::Device) -> Note {
 }
 
 pub fn low_battery_note(d: &crate::bluetooth::model::Device, level: u8) -> Note {
-    let mut n = Note::new(device_slot(&d.id) + 1, "Bluetooth", format!("{} battery low", d.display_name()), format!("{level}% left"));
+    let mut n = Note::new(
+        device_slot(&d.id) + 1,
+        "Bluetooth",
+        format!("{} battery low", d.display_name()),
+        format!("{level}% left"),
+    );
     n.value = Some(level as f32 / 100.0);
     n.icon_src = device_icon(d);
     n
@@ -110,13 +122,23 @@ impl Devices {
             return Vec::new();
         }
         let mut out = Vec::new();
-        let now: HashSet<_> = s.connected().filter(|d| d.is_paired()).map(|d| d.id.clone()).collect();
+        let now: HashSet<_> = s
+            .connected()
+            .filter(|d| d.is_paired())
+            .map(|d| d.id.clone())
+            .collect();
         if let Some(before) = &self.connected {
-            out.extend(s.connected().filter(|d| now.contains(&d.id) && !before.contains(&d.id)).map(connected_note));
+            out.extend(
+                s.connected()
+                    .filter(|d| now.contains(&d.id) && !before.contains(&d.id))
+                    .map(connected_note),
+            );
         }
         for d in s.connected() {
             match d.battery {
-                Some(b) if b < LOW && self.warned.insert(d.id.clone()) => out.push(low_battery_note(d, b)),
+                Some(b) if b < LOW && self.warned.insert(d.id.clone()) => {
+                    out.push(low_battery_note(d, b))
+                }
                 Some(b) if b > RECHARGED => {
                     self.warned.remove(&d.id);
                 }
@@ -157,18 +179,39 @@ mod tests {
         assert!(osd.see(&s, false).is_none(), "not at startup");
         let sink = s.default_sink.unwrap();
         let t = crate::sound::model::Target::Device(sink);
-        change(&mut s, Command::SetVolume { target: t, volume: 0.3 });
+        change(
+            &mut s,
+            Command::SetVolume {
+                target: t,
+                volume: 0.3,
+            },
+        );
         let n = osd.see(&s, false).expect("a card");
         assert_eq!((n.id, n.app.as_str()), (OSD_ID, "Volume"));
         assert!((n.value.unwrap() - 0.3).abs() < 0.01);
         assert!(osd.see(&s, false).is_none(), "nothing changed");
-        change(&mut s, Command::SetMute { target: t, mute: true });
+        change(
+            &mut s,
+            Command::SetMute {
+                target: t,
+                mute: true,
+            },
+        );
         assert_eq!(osd.see(&s, false).unwrap().body, "Muted");
-        change(&mut s, Command::SetVolume { target: t, volume: 0.5 });
+        change(
+            &mut s,
+            Command::SetVolume {
+                target: t,
+                volume: 0.5,
+            },
+        );
         assert!(osd.see(&s, true).is_none(), "Hokum's own change");
         let other = s.sinks().find(|d| d.id != sink).unwrap().id;
         change(&mut s, Command::SetDefault { device: other });
-        assert!(osd.see(&s, false).is_none(), "a device switch isn't a volume change");
+        assert!(
+            osd.see(&s, false).is_none(),
+            "a device switch isn't a volume change"
+        );
     }
 
     #[test]
@@ -176,12 +219,20 @@ mod tests {
         let mut w = Devices::default();
         let mut s = crate::bluetooth::mock::sample();
         assert!(w.see(&s).is_empty(), "not for devices connected at startup");
-        let i = s.devices.iter().position(|d| d.is_paired() && !d.connected).unwrap();
+        let i = s
+            .devices
+            .iter()
+            .position(|d| d.is_paired() && !d.connected)
+            .unwrap();
         s.devices[i].connected = true;
         s.devices[i].battery = Some(82);
         let notes = w.see(&s);
         assert_eq!(notes.len(), 1);
-        assert!(notes[0].summary.ends_with("connected · 82%"), "{}", notes[0].summary);
+        assert!(
+            notes[0].summary.ends_with("connected · 82%"),
+            "{}",
+            notes[0].summary
+        );
         s.devices[i].battery = Some(15);
         assert_eq!(w.see(&s)[0].body, "15% left");
         s.devices[i].battery = Some(12);

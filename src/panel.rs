@@ -3,7 +3,10 @@
 //! Bluetooth devices (a click connects or disconnects), Do not disturb, and a way into the
 //! window. Outside the card, clicks pass through.
 
-use rune::{Align, Cursor, El, KeyPolicy, OverlayInput, OverlayOptions, OverlayPlacement, OverlaySpec, ScreenEdge, col, el, row, text};
+use rune::{
+    Align, Cursor, El, KeyPolicy, OverlayInput, OverlayOptions, OverlayPlacement, OverlaySpec,
+    ScreenEdge, col, el, row, text,
+};
 use rune_kit::{ControlSize, IconButton, IconButtonVariant, Kit, Switch};
 
 use crate::settings::{Surface, Ui};
@@ -22,7 +25,10 @@ static BELL: rune::Icon = rune::Icon {
 };
 
 fn rule(k: &Kit, key: &str) -> El {
-    el().key(key.to_owned()).h(1.0).mx(14.0).fill(k.c.border_muted)
+    el().key(key.to_owned())
+        .h(1.0)
+        .mx(14.0)
+        .fill(k.c.border_muted)
 }
 
 /// Do not disturb, and the window.
@@ -47,7 +53,13 @@ fn footer(s: &Ui, k: &Kit) -> El {
         })
         .build(k)
         .key("open-window");
-    let switch = Switch::new(dnd).label("Do not disturb").hide_label().control_size(ControlSize::Small).on_toggle(toggle).build(k).key("dnd-switch");
+    let switch = Switch::new(dnd)
+        .label("Do not disturb")
+        .hide_label()
+        .control_size(ControlSize::Small)
+        .on_toggle(toggle)
+        .build(k)
+        .key("dnd-switch");
     row()
         .key("footer")
         .w_full()
@@ -71,8 +83,18 @@ fn footer(s: &Ui, k: &Kit) -> El {
                 .hover(c.hover)
                 .cursor(Cursor::Pointer)
                 .on_press(toggle)
-                .child(rune::icon(&BELL, 16.0).key("glyph").color(if dnd { c.icon_base } else { c.icon_muted }))
-                .child(text("Do not disturb").key("label").font(k.ty.ui).color(c.text_base).grow(1.0))
+                .child(rune::icon(&BELL, 16.0).key("glyph").color(if dnd {
+                    c.icon_base
+                } else {
+                    c.icon_muted
+                }))
+                .child(
+                    text("Do not disturb")
+                        .key("label")
+                        .font(k.ty.ui)
+                        .color(c.text_base)
+                        .grow(1.0),
+                )
                 .child(switch),
         )
         .child(open.opacity(0.7))
@@ -86,7 +108,16 @@ pub fn view(s: &Ui, k: &Kit) -> El {
     if s.loaded.modules.sound && s.sound_error.is_none() {
         let rows = crate::sound::ui::panel(&s.sound, k, &mut layer);
         if !rows.is_empty() {
-            card = card.child(col().key("sound").w_full().px(14.0).pt(12.0).pb(14.0).gap(14.0).children(rows));
+            card = card.child(
+                col()
+                    .key("sound")
+                    .w_full()
+                    .px(14.0)
+                    .pt(12.0)
+                    .pb(14.0)
+                    .gap(14.0)
+                    .children(rows),
+            );
             parts += 1;
         }
     }
@@ -103,30 +134,53 @@ pub fn view(s: &Ui, k: &Kit) -> El {
     if parts > 0 {
         card = card.child(rule(k, "rule-footer"));
     }
-    let card = card.child(footer(s, k)).radius(14.0).fill(c.page).border(1.0, c.border_base).hit();
-    let card = k.elevation.overlay.iter().fold(card, |e, sh| e.box_shadow(*sh));
-    col().key("panel-frame").w(WIDTH + 2.0 * MARGIN).padding(MARGIN).child(card).children(layer.into_iter().map(El::hit))
+    let card = card
+        .child(footer(s, k))
+        .radius(14.0)
+        .fill(c.page)
+        .border(1.0, c.border_base)
+        .hit();
+    let card = k
+        .elevation
+        .overlay
+        .iter()
+        .fold(card, |e, sh| e.box_shadow(*sh));
+    col()
+        .key("panel-frame")
+        .w(WIDTH + 2.0 * MARGIN)
+        .padding(MARGIN)
+        .child(card)
+        .children(layer.into_iter().map(El::hit))
 }
 
 /// The panel's overlay: under the top edge at the right, where tray icons usually sit.
 pub fn overlay() -> rune::ConfiguredOverlay<Ui> {
-    OverlaySpec::new("hokum-panel", (WIDTH + 2.0 * MARGIN, HEIGHT), crate::settings::view)
-        .options(OverlayOptions {
-            placement: Some(OverlayPlacement::Edge { edge: ScreenEdge::Top, margin: 4.0, align: Align::End, inset: 4.0 }),
-            keys: KeyPolicy::OnDemand,
-            input: OverlayInput::Regions,
-            ..OverlayOptions::default()
-        })
-        .on_key(crate::settings::on_key)
-        .on_focus(|s: &mut Ui, focused, _| {
-            if !focused
-                && s.sound.visible
-                && let Some(d) = &s.dismiss
-            {
-                d();
-            }
-        })
-        .setup(crate::settings::setup)
+    OverlaySpec::new(
+        "hokum-panel",
+        (WIDTH + 2.0 * MARGIN, HEIGHT),
+        crate::settings::view,
+    )
+    .options(OverlayOptions {
+        placement: Some(OverlayPlacement::Edge {
+            edge: ScreenEdge::Top,
+            margin: 4.0,
+            align: Align::End,
+            inset: 4.0,
+        }),
+        keys: KeyPolicy::OnDemand,
+        input: OverlayInput::Regions,
+        ..OverlayOptions::default()
+    })
+    .on_key(crate::settings::on_key)
+    .on_focus(|s: &mut Ui, focused, _| {
+        if !focused
+            && s.sound.visible
+            && let Some(d) = &s.dismiss
+        {
+            d();
+        }
+    })
+    .setup(crate::settings::setup)
 }
 
 /// The panel's state: the window's, drawn as the panel.

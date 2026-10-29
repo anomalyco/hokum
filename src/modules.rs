@@ -54,7 +54,11 @@ pub fn open(window: &AppHandle<Ui>, section: Option<Section>, token: Option<Stri
 }
 
 impl Wiring {
-    pub fn new(window: AppHandle<Ui>, panel: OverlayHandle<Ui>, cards: OverlayHandle<crate::cards::Ui>) -> Arc<Wiring> {
+    pub fn new(
+        window: AppHandle<Ui>,
+        panel: OverlayHandle<Ui>,
+        cards: OverlayHandle<crate::cards::Ui>,
+    ) -> Arc<Wiring> {
         let w = Arc::new(Wiring {
             window,
             panel,
@@ -63,7 +67,10 @@ impl Wiring {
             devices: Mutex::default(),
             show_osd: AtomicBool::new(true),
             show_devices: AtomicBool::new(true),
-            shown: Arc::new(AtomicBool::new(false)), tray: Mutex::new(None), tip: Arc::new(Mutex::new(Tip::default())) });
+            shown: Arc::new(AtomicBool::new(false)),
+            tray: Mutex::new(None),
+            tip: Arc::new(Mutex::new(Tip::default())),
+        });
         let hide = w.hider();
         w.panel.update(move |p, _| p.dismiss = Some(hide));
         w
@@ -99,7 +106,8 @@ impl Wiring {
     pub fn configure(self: &Arc<Self>, ui: &mut Ui, config: &Config) {
         let m = config.loaded.modules;
         self.show_osd.store(m.osd, Ordering::Relaxed);
-        self.show_devices.store(m.bluetooth_notifications, Ordering::Relaxed);
+        self.show_devices
+            .store(m.bluetooth_notifications, Ordering::Relaxed);
         let sound_on = ui.sound.handle.is_some() || ui.sound_error.is_some();
         if m.sound && !sound_on {
             self.start_sound(ui);
@@ -107,7 +115,11 @@ impl Wiring {
             ui.sound_error = None;
             ui.sound.attach(None, None, None);
             self.panel.update(|p, _| p.sound.attach(None, None, None));
-            self.tip.lock().unwrap_or_else(|e| e.into_inner()).sound.clear();
+            self.tip
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .sound
+                .clear();
         }
         let bt_on = ui.bluetooth.handle.is_some() || ui.bluetooth_error.is_some();
         if m.bluetooth && !bt_on {
@@ -116,7 +128,11 @@ impl Wiring {
             ui.bluetooth_error = None;
             ui.bluetooth.attach(None, None);
             self.panel.update(|p, _| p.bluetooth.attach(None, None));
-            self.tip.lock().unwrap_or_else(|e| e.into_inner()).bluetooth.clear();
+            self.tip
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .bluetooth
+                .clear();
         }
         self.sync_tray(m, config.loaded.behaviour.do_not_disturb);
         let c = config.clone();
@@ -125,7 +141,11 @@ impl Wiring {
 
     fn start_sound(self: &Arc<Self>, ui: &mut Ui) {
         let mock = std::env::var("HOKUM_SOUND_BACKEND").is_ok_and(|b| b == "mock");
-        let source = if mock { crate::sound::model::Source::Mock } else { crate::sound::model::Source::PipeWire };
+        let source = if mock {
+            crate::sound::model::Source::Mock
+        } else {
+            crate::sound::model::Source::PipeWire
+        };
         let audio = match crate::sound::model::start(source) {
             Ok(a) => a,
             Err(e) => {
@@ -139,7 +159,11 @@ impl Wiring {
             let (window, panel, me) = (self.window.clone(), self.panel.clone(), self.clone());
             audio.on_change(move |s| {
                 me.set_tip(|t| t.sound = sound_tip(s));
-                let card = me.osd.lock().unwrap_or_else(|e| e.into_inner()).see(s, crate::sound::ui::touched_recently());
+                let card = me
+                    .osd
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .see(s, crate::sound::ui::touched_recently());
                 if let Some(n) = card.filter(|_| me.show_osd.load(Ordering::Relaxed)) {
                     me.cards.update(move |c, _| c.upsert(n));
                 }
@@ -149,13 +173,18 @@ impl Wiring {
             })
         };
         let (a, m) = (audio.clone(), meters.clone());
-        self.panel.update(move |p, _| p.sound.attach(Some(a), Some(m), None));
+        self.panel
+            .update(move |p, _| p.sound.attach(Some(a), Some(m), None));
         ui.sound.attach(Some(audio), Some(meters), Some(sub));
     }
 
     fn start_bluetooth(self: &Arc<Self>, ui: &mut Ui) {
         let mock = std::env::var("HOKUM_BLUETOOTH_BACKEND").is_ok_and(|b| b == "mock");
-        let source = if mock { crate::bluetooth::model::Source::Mock } else { crate::bluetooth::model::Source::Bluez };
+        let source = if mock {
+            crate::bluetooth::model::Source::Mock
+        } else {
+            crate::bluetooth::model::Source::Bluez
+        };
         let bt = match crate::bluetooth::model::start(source) {
             Ok(b) => b,
             Err(e) => {
@@ -180,15 +209,23 @@ impl Wiring {
             })
         };
         let b = bt.clone();
-        self.panel.update(move |p, _| p.bluetooth.attach(Some(b), None));
+        self.panel
+            .update(move |p, _| p.bluetooth.attach(Some(b), None));
         ui.bluetooth.attach(Some(bt), Some(sub));
     }
 
     fn set_tip(&self, f: impl FnOnce(&mut Tip)) {
         let mut t = self.tip.lock().unwrap_or_else(|e| e.into_inner());
         f(&mut t);
-        let parts: Vec<&str> = [t.sound.as_str(), t.bluetooth.as_str()].into_iter().filter(|p| !p.is_empty()).collect();
-        let tip = if parts.is_empty() { "Hokum".to_owned() } else { parts.join(" · ") };
+        let parts: Vec<&str> = [t.sound.as_str(), t.bluetooth.as_str()]
+            .into_iter()
+            .filter(|p| !p.is_empty())
+            .collect();
+        let tip = if parts.is_empty() {
+            "Hokum".to_owned()
+        } else {
+            parts.join(" · ")
+        };
         if tip != t.shown {
             if let Some((tray, ..)) = &*self.tray.lock().unwrap_or_else(|e| e.into_inner()) {
                 tray.set_tooltip(tip.clone());
@@ -200,7 +237,12 @@ impl Wiring {
     /// One tray icon while any module is on: a speaker (or Bluetooth's rune with Sound off).
     fn sync_tray(self: &Arc<Self>, m: crate::theme::Modules, dnd: bool) {
         // Tip before tray, the order `set_tip` takes them in.
-        let tooltip = self.tip.lock().unwrap_or_else(|e| e.into_inner()).shown.clone();
+        let tooltip = self
+            .tip
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .shown
+            .clone();
         let mut slot = self.tray.lock().unwrap_or_else(|e| e.into_inner());
         if !(m.sound || m.bluetooth) {
             *slot = None;
@@ -215,9 +257,17 @@ impl Wiring {
             }
             return;
         }
-        let spec = TraySpec::new("hokum", "Hokum", TrayIcon::rgba(32, 32, if m.sound { speaker(32) } else { rune_mark(32) }))
-            .tooltip(if tooltip.is_empty() { "Hokum".into() } else { tooltip })
-            .menu(menu(dnd));
+        let spec = TraySpec::new(
+            "hokum",
+            "Hokum",
+            TrayIcon::rgba(32, 32, if m.sound { speaker(32) } else { rune_mark(32) }),
+        )
+        .tooltip(if tooltip.is_empty() {
+            "Hokum".into()
+        } else {
+            tooltip
+        })
+        .menu(menu(dnd));
         let me = Arc::downgrade(self);
         let window = self.window.clone();
         match Tray::new(spec, move |e| match e {
@@ -243,7 +293,14 @@ impl Wiring {
 fn menu(dnd: bool) -> Vec<TrayItem> {
     vec![
         TrayItem::action("open", "Open Hokum"),
-        TrayItem::action("dnd", if dnd { "Turn off Do not disturb" } else { "Turn on Do not disturb" }),
+        TrayItem::action(
+            "dnd",
+            if dnd {
+                "Turn off Do not disturb"
+            } else {
+                "Turn on Do not disturb"
+            },
+        ),
         TrayItem::Separator,
         TrayItem::action("quit", "Quit"),
     ]
@@ -252,7 +309,11 @@ fn menu(dnd: bool) -> Vec<TrayItem> {
 fn sound_tip(s: &crate::sound::model::State) -> String {
     match s.default_sink() {
         Some(d) if d.mute => format!("{} muted", d.description),
-        Some(d) => format!("{} {}%", d.description, (d.volume.combined() * 100.0).round()),
+        Some(d) => format!(
+            "{} {}%",
+            d.description,
+            (d.volume.combined() * 100.0).round()
+        ),
         None => String::new(),
     }
 }
@@ -279,7 +340,10 @@ fn raster(size: u32, alpha: u32, inside: impl Fn(f32, f32) -> bool) -> Vec<u8> {
             let mut hits = 0;
             for sy in 0..4 {
                 for sx in 0..4 {
-                    if inside((px as f32 + (sx as f32 + 0.5) / 4.0) / s, (py as f32 + (sy as f32 + 0.5) / 4.0) / s) {
+                    if inside(
+                        (px as f32 + (sx as f32 + 0.5) / 4.0) / s,
+                        (py as f32 + (sy as f32 + 0.5) / 4.0) / s,
+                    ) {
                         hits += 1;
                     }
                 }
@@ -292,7 +356,14 @@ fn raster(size: u32, alpha: u32, inside: impl Fn(f32, f32) -> bool) -> Vec<u8> {
 
 /// A speaker with two waves, on a 16-point grid.
 fn speaker(size: u32) -> Vec<u8> {
-    let body = [[2.5, 6.0], [4.7, 6.0], [8.0, 3.2], [8.0, 12.8], [4.7, 10.0], [2.5, 10.0]];
+    let body = [
+        [2.5, 6.0],
+        [4.7, 6.0],
+        [8.0, 3.2],
+        [8.0, 12.8],
+        [4.7, 10.0],
+        [2.5, 10.0],
+    ];
     raster(size, 255, |x, y| {
         let mut odd = false;
         let mut j = body.len() - 1;
@@ -314,7 +385,14 @@ fn speaker(size: u32) -> Vec<u8> {
 
 /// Bluetooth's rune, on a 16-point grid.
 fn rune_mark(size: u32) -> Vec<u8> {
-    let pts = [[4.5, 5.0], [11.5, 11.0], [8.0, 14.0], [8.0, 2.0], [11.5, 5.0], [4.5, 11.0]];
+    let pts = [
+        [4.5, 5.0],
+        [11.5, 11.0],
+        [8.0, 14.0],
+        [8.0, 2.0],
+        [11.5, 5.0],
+        [4.5, 11.0],
+    ];
     raster(size, 255, |x, y| {
         pts.windows(2).any(|w| {
             let ([ax, ay], [bx, by]) = (w[0], w[1]);
@@ -343,6 +421,9 @@ mod tests {
         assert_eq!(sound_tip(&crate::sound::mock::sample()).is_empty(), false);
         let bt = crate::bluetooth::mock::sample();
         let tip = bluetooth_tip(&bt);
-        assert!(bt.connected().all(|d| tip.contains(d.display_name())), "{tip}");
+        assert!(
+            bt.connected().all(|d| tip.contains(d.display_name())),
+            "{tip}"
+        );
     }
 }

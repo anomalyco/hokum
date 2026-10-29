@@ -48,22 +48,41 @@ pub fn refusal(owner: &str, shell: Option<Shell>, replace: bool) -> (String, i32
 
 /// What to say on a compositor without layer-shell.
 pub fn no_layer_shell() -> String {
-    let gnome = std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.to_uppercase().contains("GNOME"));
-    let here = if gnome { "GNOME doesn't support layer-shell" } else { "This compositor doesn't support layer-shell" };
-    format!("{here} (zwlr_layer_shell_v1), which Hokum draws its cards and panel with, so Hokum can't run here. It runs on niri, sway, Hyprland, river and KDE Plasma.")
+    let gnome =
+        std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.to_uppercase().contains("GNOME"));
+    let here = if gnome {
+        "GNOME doesn't support layer-shell"
+    } else {
+        "This compositor doesn't support layer-shell"
+    };
+    format!(
+        "{here} (zwlr_layer_shell_v1), which Hokum draws its cards and panel with, so Hokum can't run here. It runs on niri, sway, Hyprland, river and KDE Plasma."
+    )
 }
 
 struct Probe;
 
 impl Dispatch<WlRegistry, GlobalListContents> for Probe {
-    fn event(_: &mut Self, _: &WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &WlRegistry,
+        _: wl_registry::Event,
+        _: &GlobalListContents,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 /// Whether the Wayland compositor offers `zwlr_layer_shell_v1`; None without one to ask.
 pub fn layer_shell() -> Option<bool> {
     let conn = Connection::connect_to_env().ok()?;
     let (globals, _) = registry_queue_init::<Probe>(&conn).ok()?;
-    Some(globals.contents().with_list(|l| l.iter().any(|g| g.interface == "zwlr_layer_shell_v1")))
+    Some(
+        globals
+            .contents()
+            .with_list(|l| l.iter().any(|g| g.interface == "zwlr_layer_shell_v1")),
+    )
 }
 
 #[cfg(test)]
@@ -81,7 +100,12 @@ mod tests {
 
     #[test]
     fn never_says_pass_replace_after_replace() {
-        for shell in [None, Some(Shell::Gnome), Some(Shell::Plasma), Some(Shell::Quickshell)] {
+        for shell in [
+            None,
+            Some(Shell::Gnome),
+            Some(Shell::Plasma),
+            Some(Shell::Quickshell),
+        ] {
             let (text, code) = refusal("mako", shell, true);
             assert!(!text.contains("--replace"), "{text}");
             assert_eq!(code, UNSUPPORTED);
@@ -93,8 +117,20 @@ mod tests {
 
     #[test]
     fn shells_say_what_to_do() {
-        assert!(refusal("gnome-shell", Some(Shell::Gnome), false).0.contains("can't run on GNOME"));
-        assert!(refusal("Plasma", Some(Shell::Plasma), false).0.contains("Notifications: Disabled"));
-        assert!(refusal("quickshell", Some(Shell::Quickshell), false).0.contains("omarchy.md"));
+        assert!(
+            refusal("gnome-shell", Some(Shell::Gnome), false)
+                .0
+                .contains("can't run on GNOME")
+        );
+        assert!(
+            refusal("Plasma", Some(Shell::Plasma), false)
+                .0
+                .contains("Notifications: Disabled")
+        );
+        assert!(
+            refusal("quickshell", Some(Shell::Quickshell), false)
+                .0
+                .contains("omarchy.md")
+        );
     }
 }

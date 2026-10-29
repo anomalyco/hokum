@@ -31,7 +31,10 @@ use zbus::message::Type as MessageType;
 use zbus::zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Value};
 use zbus::{DBusError, MatchRule, Message};
 
-use crate::bluetooth::model::{self, Bluetooth, Command, Connection, DeviceId, Issue, PairingKind, PairingRequest, Pending, Publisher, Reply, Service, Severity, State};
+use crate::bluetooth::model::{
+    self, Bluetooth, Command, Connection, DeviceId, Issue, PairingKind, PairingRequest, Pending,
+    Publisher, Reply, Service, Severity, State,
+};
 use map::{ADAPTER, DEVICE, Objects};
 
 const BLUEZ: &str = "org.bluez";
@@ -91,8 +94,15 @@ fn spawn(role: Role) -> Result<(Bluetooth, JoinHandle<()>), String> {
         .name("bluez".into())
         .spawn(move || {
             // A bug here mustn't take notifications down with it: the section says it stopped.
-            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Backend::new(role, publisher, tx).run(rx))).is_err() {
-                stopped.publish(State { connection: Connection::Lost("Bluetooth stopped working; restart Hokum".into()), ..State::default() });
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                Backend::new(role, publisher, tx).run(rx)
+            }))
+            .is_err()
+            {
+                stopped.publish(State {
+                    connection: Connection::Lost("Bluetooth stopped working; restart Hokum".into()),
+                    ..State::default()
+                });
             }
         })
         .map_err(|e| e.to_string())?;
@@ -131,7 +141,10 @@ pub struct Fail {
 
 impl From<zbus::Error> for Fail {
     fn from(error: zbus::Error) -> Fail {
-        Fail { what: None, error: Box::new(error) }
+        Fail {
+            what: None,
+            error: Box::new(error),
+        }
     }
 }
 
@@ -144,10 +157,18 @@ fn error_parts(e: &zbus::Error) -> (Option<String>, Option<String>) {
 }
 
 fn is_error(e: &zbus::Error, short: &str) -> bool {
-    error_parts(e).0.is_some_and(|n| n.rsplit('.').next() == Some(short))
+    error_parts(e)
+        .0
+        .is_some_and(|n| n.rsplit('.').next() == Some(short))
 }
 
-fn call(bus: &Bus, path: &str, iface: &str, method: &str, body: &(impl serde::Serialize + zbus::zvariant::DynamicType)) -> zbus::Result<Message> {
+fn call(
+    bus: &Bus,
+    path: &str,
+    iface: &str,
+    method: &str,
+    body: &(impl serde::Serialize + zbus::zvariant::DynamicType),
+) -> zbus::Result<Message> {
     bus.call_method(Some(BLUEZ), path, Some(iface), method, body)
 }
 
@@ -224,7 +245,14 @@ impl Backend {
         self.connect();
         loop {
             self.tick();
-            let deadline = [self.dirty.then(|| self.last_publish + COALESCE), self.retry_at, self.pairing.as_ref().map(|l| l.deadline)].into_iter().flatten().min();
+            let deadline = [
+                self.dirty.then(|| self.last_publish + COALESCE),
+                self.retry_at,
+                self.pairing.as_ref().map(|l| l.deadline),
+            ]
+            .into_iter()
+            .flatten()
+            .min();
             let event = match deadline {
                 Some(d) => rx.recv_timeout(d.saturating_duration_since(Instant::now())),
                 None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
@@ -252,7 +280,10 @@ impl Backend {
                 let _ = answer.try_send(Reply::Reject);
                 self.cancelled.insert(live.request.device.clone());
                 let name = self.name(&live.request.device);
-                self.issue(format!("Pairing with {name} timed out"), Some(live.request.device));
+                self.issue(
+                    format!("Pairing with {name} timed out"),
+                    Some(live.request.device),
+                );
             }
             self.dirty = true;
         }
@@ -267,8 +298,20 @@ impl Backend {
             d.pending = self.pending.get(&d.id).copied();
         }
         let default_adapter = map::default_adapter(&adapters, self.selected.as_ref());
-        let pairing = self.pairing.as_ref().map(|l| l.request.clone()).filter(|p| devices.iter().any(|d| d.id == p.device));
-        self.publisher.publish(State { revision: 0, connection: self.connection.clone(), adapters, default_adapter, devices, pairing, issues: self.issues.clone() });
+        let pairing = self
+            .pairing
+            .as_ref()
+            .map(|l| l.request.clone())
+            .filter(|p| devices.iter().any(|d| d.id == p.device));
+        self.publisher.publish(State {
+            revision: 0,
+            connection: self.connection.clone(),
+            adapters,
+            default_adapter,
+            devices,
+            pairing,
+            issues: self.issues.clone(),
+        });
         self.dirty = false;
         self.last_publish = Instant::now();
     }
@@ -281,7 +324,12 @@ impl Backend {
     fn issue(&mut self, message: String, device: Option<DeviceId>) {
         log!("issue: {message}");
         let id = self.id();
-        self.issues.push(Issue { id, severity: Severity::Error, message, device });
+        self.issues.push(Issue {
+            id,
+            severity: Severity::Error,
+            message,
+            device,
+        });
         if self.issues.len() > MAX_ISSUES {
             self.issues.remove(0);
         }
@@ -289,11 +337,17 @@ impl Backend {
     }
 
     fn name(&self, id: &DeviceId) -> String {
-        map::device(&id.0, &self.objects).map_or_else(|| "the device".into(), |d| d.display_name().to_owned())
+        map::device(&id.0, &self.objects)
+            .map_or_else(|| "the device".into(), |d| d.display_name().to_owned())
     }
 
     fn adapter_name(&self, id: &model::AdapterId) -> String {
-        self.objects.get(&id.0).and_then(|i| i.get(ADAPTER)).map_or_else(String::new, |p| map::adapter(&id.0, p).display_name().to_owned())
+        self.objects
+            .get(&id.0)
+            .and_then(|i| i.get(ADAPTER))
+            .map_or_else(String::new, |p| {
+                map::adapter(&id.0, p).display_name().to_owned()
+            })
     }
 
     // Connection lifecycle.
@@ -305,15 +359,35 @@ impl Backend {
         };
         self.generation += 1;
         if self.role != Role::Inspect
-            && let Err(e) = bus.object_server().at(agent::PATH, agent::Agent { events: self.events.clone() })
+            && let Err(e) = bus.object_server().at(
+                agent::PATH,
+                agent::Agent {
+                    events: self.events.clone(),
+                },
+            )
         {
             log!("couldn't export the agent: {e}");
         }
         let rules = (|| -> zbus::Result<Vec<MatchRule<'static>>> {
             Ok(vec![
-                MatchRule::builder().msg_type(MessageType::Signal).sender("org.freedesktop.DBus")?.interface("org.freedesktop.DBus")?.member("NameOwnerChanged")?.add_arg(BLUEZ)?.build(),
-                MatchRule::builder().msg_type(MessageType::Signal).interface("org.freedesktop.DBus.ObjectManager")?.path("/")?.build(),
-                MatchRule::builder().msg_type(MessageType::Signal).interface(PROPERTIES)?.member("PropertiesChanged")?.path_namespace("/org/bluez")?.build(),
+                MatchRule::builder()
+                    .msg_type(MessageType::Signal)
+                    .sender("org.freedesktop.DBus")?
+                    .interface("org.freedesktop.DBus")?
+                    .member("NameOwnerChanged")?
+                    .add_arg(BLUEZ)?
+                    .build(),
+                MatchRule::builder()
+                    .msg_type(MessageType::Signal)
+                    .interface("org.freedesktop.DBus.ObjectManager")?
+                    .path("/")?
+                    .build(),
+                MatchRule::builder()
+                    .msg_type(MessageType::Signal)
+                    .interface(PROPERTIES)?
+                    .member("PropertiesChanged")?
+                    .path_namespace("/org/bluez")?
+                    .build(),
             ])
         })();
         let rules = match rules {
@@ -326,24 +400,27 @@ impl Backend {
                 Err(e) => return self.lost(format!("{e}")),
             };
             let (tx, generation) = (self.events.clone(), self.generation);
-            let _ = thread::Builder::new().name("bluez-signals".into()).spawn(move || {
-                for m in iter {
-                    match m {
-                        Ok(m) => {
-                            if tx.send(Event::Signal(generation, m)).is_err() {
+            let _ = thread::Builder::new()
+                .name("bluez-signals".into())
+                .spawn(move || {
+                    for m in iter {
+                        match m {
+                            Ok(m) => {
+                                if tx.send(Event::Signal(generation, m)).is_err() {
+                                    return;
+                                }
+                            }
+                            Err(e) => {
+                                let _ = tx.send(Event::BusLost(generation, format!("{e}")));
                                 return;
                             }
                         }
-                        Err(e) => {
-                            let _ = tx.send(Event::BusLost(generation, format!("{e}")));
-                            return;
-                        }
                     }
-                }
-                let _ = tx.send(Event::BusLost(generation, "the system bus closed".into()));
-            });
+                    let _ = tx.send(Event::BusLost(generation, "the system bus closed".into()));
+                });
         }
-        let owner = zbus::blocking::fdo::DBusProxy::new(&bus).and_then(|p| Ok(p.get_name_owner(BLUEZ.try_into()?)?));
+        let owner = zbus::blocking::fdo::DBusProxy::new(&bus)
+            .and_then(|p| Ok(p.get_name_owner(BLUEZ.try_into()?)?));
         self.bus = Some(bus);
         self.backoff = Duration::from_secs(1);
         match owner {
@@ -380,9 +457,25 @@ impl Backend {
         self.dirty = true;
         let Some(bus) = self.bus.clone() else { return };
         type Managed = HashMap<OwnedObjectPath, HashMap<String, HashMap<String, OwnedValue>>>;
-        match call(&bus, "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects", &()).and_then(|m| m.body().deserialize::<Managed>()) {
+        match call(
+            &bus,
+            "/",
+            "org.freedesktop.DBus.ObjectManager",
+            "GetManagedObjects",
+            &(),
+        )
+        .and_then(|m| m.body().deserialize::<Managed>())
+        {
             Ok(objects) => {
-                self.objects = objects.into_iter().map(|(path, ifaces)| (path.to_string(), ifaces.into_iter().collect::<BTreeMap<_, _>>())).collect();
+                self.objects = objects
+                    .into_iter()
+                    .map(|(path, ifaces)| {
+                        (
+                            path.to_string(),
+                            ifaces.into_iter().collect::<BTreeMap<_, _>>(),
+                        )
+                    })
+                    .collect();
             }
             Err(e) => log!("GetManagedObjects failed: {e}"),
         }
@@ -393,7 +486,13 @@ impl Backend {
 
     fn register_agent(&mut self, bus: &Bus) {
         let path = ObjectPath::from_static_str_unchecked(agent::PATH);
-        match call(bus, "/org/bluez", AGENT_MANAGER, "RegisterAgent", &(&path, agent::CAPABILITY)) {
+        match call(
+            bus,
+            "/org/bluez",
+            AGENT_MANAGER,
+            "RegisterAgent",
+            &(&path, agent::CAPABILITY),
+        ) {
             Ok(_) => self.agent_registered = true,
             Err(e) if is_error(&e, "AlreadyExists") => self.agent_registered = true,
             Err(e) => log!("RegisterAgent failed: {e}"),
@@ -408,7 +507,13 @@ impl Backend {
 
     fn request_default(&mut self, bus: &Bus) {
         let path = ObjectPath::from_static_str_unchecked(agent::PATH);
-        match call(bus, "/org/bluez", AGENT_MANAGER, "RequestDefaultAgent", &(&path,)) {
+        match call(
+            bus,
+            "/org/bluez",
+            AGENT_MANAGER,
+            "RequestDefaultAgent",
+            &(&path,),
+        ) {
             Ok(_) => log!("default agent"),
             Err(e) => log!("RequestDefaultAgent failed: {e}"),
         }
@@ -423,7 +528,13 @@ impl Backend {
             }
             if self.agent_registered {
                 let path = ObjectPath::from_static_str_unchecked(agent::PATH);
-                let r = call(&bus, "/org/bluez", AGENT_MANAGER, "UnregisterAgent", &(&path,));
+                let r = call(
+                    &bus,
+                    "/org/bluez",
+                    AGENT_MANAGER,
+                    "UnregisterAgent",
+                    &(&path,),
+                );
                 log!("agent unregistered: {:?}", r.err());
             }
         }
@@ -438,7 +549,11 @@ impl Backend {
             Event::CommandsClosed => {}
             Event::Signal(generation, m) if generation == self.generation => self.signal(m),
             Event::Signal(..) => {}
-            Event::BusLost(generation, reason) if generation == self.generation && self.bus.is_some() => self.lost(reason),
+            Event::BusLost(generation, reason)
+                if generation == self.generation && self.bus.is_some() =>
+            {
+                self.lost(reason)
+            }
             Event::BusLost(..) => {}
             Event::Done(done, result) => self.done(done, result),
             Event::Progress(device, pending) => {
@@ -482,13 +597,20 @@ impl Backend {
         let path = header.path().map(|p| p.to_string()).unwrap_or_default();
         match member.as_str() {
             "InterfacesAdded" => {
-                if let Ok((path, ifaces)) = m.body().deserialize::<(OwnedObjectPath, HashMap<String, HashMap<String, OwnedValue>>)>() {
-                    self.objects.entry(path.to_string()).or_default().extend(ifaces);
+                if let Ok((path, ifaces)) = m.body().deserialize::<(
+                    OwnedObjectPath,
+                    HashMap<String, HashMap<String, OwnedValue>>,
+                )>() {
+                    self.objects
+                        .entry(path.to_string())
+                        .or_default()
+                        .extend(ifaces);
                     self.dirty = true;
                 }
             }
             "InterfacesRemoved" => {
-                if let Ok((path, ifaces)) = m.body().deserialize::<(OwnedObjectPath, Vec<String>)>() {
+                if let Ok((path, ifaces)) = m.body().deserialize::<(OwnedObjectPath, Vec<String>)>()
+                {
                     let path = path.to_string();
                     if let Some(entry) = self.objects.get_mut(&path) {
                         for i in &ifaces {
@@ -501,7 +623,11 @@ impl Backend {
                     if ifaces.iter().any(|i| i == DEVICE) {
                         let id = DeviceId(path);
                         self.pending.remove(&id);
-                        if self.pairing.as_ref().is_some_and(|l| l.request.device == id) {
+                        if self
+                            .pairing
+                            .as_ref()
+                            .is_some_and(|l| l.request.device == id)
+                        {
                             self.pairing = None;
                         }
                     }
@@ -509,14 +635,30 @@ impl Backend {
                 }
             }
             "PropertiesChanged" => {
-                let Ok((iface, changed, invalidated)) = m.body().deserialize::<(String, HashMap<String, OwnedValue>, Vec<String>)>() else { return };
-                let Some(props) = self.objects.get_mut(&path).and_then(|i| i.get_mut(&iface)) else { return };
-                let paired = iface == DEVICE && changed.get("Paired").is_some_and(|v| matches!(&**v, Value::Bool(true)));
+                let Ok((iface, changed, invalidated)) =
+                    m.body()
+                        .deserialize::<(String, HashMap<String, OwnedValue>, Vec<String>)>()
+                else {
+                    return;
+                };
+                let Some(props) = self.objects.get_mut(&path).and_then(|i| i.get_mut(&iface))
+                else {
+                    return;
+                };
+                let paired = iface == DEVICE
+                    && changed
+                        .get("Paired")
+                        .is_some_and(|v| matches!(&**v, Value::Bool(true)));
                 props.extend(changed);
                 for k in invalidated {
                     props.remove(&k);
                 }
-                if paired && self.pairing.as_ref().is_some_and(|l| l.request.device.0 == path && l.answer.is_none()) {
+                if paired
+                    && self
+                        .pairing
+                        .as_ref()
+                        .is_some_and(|l| l.request.device.0 == path && l.answer.is_none())
+                {
                     self.pairing = None;
                 }
                 self.dirty = true;
@@ -531,48 +673,94 @@ impl Backend {
         {
             self.pending.remove(d);
         }
-        let user_cancelled = done.device.as_ref().is_some_and(|d| self.cancelled.remove(d));
+        let user_cancelled = done
+            .device
+            .as_ref()
+            .is_some_and(|d| self.cancelled.remove(d));
         if let Some(d) = &done.device
-            && self.pairing.as_ref().is_some_and(|l| &l.request.device == d && l.answer.is_none())
+            && self
+                .pairing
+                .as_ref()
+                .is_some_and(|l| &l.request.device == d && l.answer.is_none())
         {
             self.pairing = None;
         }
         self.dirty = true;
         let Err(fail) = result else { return };
         log!("{} failed: {}", done.what, fail.error);
-        if user_cancelled || is_error(&fail.error, "AuthenticationCanceled") && fail.what.is_none() {
+        if user_cancelled || is_error(&fail.error, "AuthenticationCanceled") && fail.what.is_none()
+        {
             return;
         }
         let (name, message) = error_parts(&fail.error);
-        let text = map::issue_text(fail.what.as_deref().unwrap_or(&done.what), name.as_deref(), message.as_deref());
+        let text = map::issue_text(
+            fail.what.as_deref().unwrap_or(&done.what),
+            name.as_deref(),
+            message.as_deref(),
+        );
         self.issue(text, done.device);
     }
 
     /// Runs `f` on its own thread and reports back with [`Event::Done`].
-    fn spawn(&mut self, device: Option<DeviceId>, pending: Option<Pending>, what: String, f: impl FnOnce(&Bus, &Sender<Event>) -> Result<(), Fail> + Send + 'static) {
+    fn spawn(
+        &mut self,
+        device: Option<DeviceId>,
+        pending: Option<Pending>,
+        what: String,
+        f: impl FnOnce(&Bus, &Sender<Event>) -> Result<(), Fail> + Send + 'static,
+    ) {
         let Some(bus) = self.bus.clone() else { return };
         if let (Some(d), Some(p)) = (&device, pending) {
             self.pending.insert(d.clone(), p);
             self.dirty = true;
         }
         let tx = self.events.clone();
-        let done = Done { device, what, pending: pending.is_some() };
-        let _ = thread::Builder::new().name("bluez-call".into()).spawn(move || {
-            let result = f(&bus, &tx);
-            let _ = tx.send(Event::Done(done, result));
+        let done = Done {
+            device,
+            what,
+            pending: pending.is_some(),
+        };
+        let _ = thread::Builder::new()
+            .name("bluez-call".into())
+            .spawn(move || {
+                let result = f(&bus, &tx);
+                let _ = tx.send(Event::Done(done, result));
+            });
+    }
+
+    fn set_adapter(
+        &mut self,
+        adapter: model::AdapterId,
+        prop: &'static str,
+        value: Value<'static>,
+        what: String,
+    ) {
+        self.spawn(None, None, what, move |bus, _| {
+            Ok(set(bus, &adapter.0, ADAPTER, prop, value)?)
         });
     }
 
-    fn set_adapter(&mut self, adapter: model::AdapterId, prop: &'static str, value: Value<'static>, what: String) {
-        self.spawn(None, None, what, move |bus, _| Ok(set(bus, &adapter.0, ADAPTER, prop, value)?));
-    }
-
-    fn set_device(&mut self, device: DeviceId, prop: &'static str, value: Value<'static>, what: String) {
+    fn set_device(
+        &mut self,
+        device: DeviceId,
+        prop: &'static str,
+        value: Value<'static>,
+        what: String,
+    ) {
         let path = device.0.clone();
-        self.spawn(Some(device), None, what, move |bus, _| Ok(set(bus, &path, DEVICE, prop, value)?));
+        self.spawn(Some(device), None, what, move |bus, _| {
+            Ok(set(bus, &path, DEVICE, prop, value)?)
+        });
     }
 
-    fn device_call(&mut self, device: DeviceId, pending: Pending, method: &'static str, body: Option<String>, what: String) {
+    fn device_call(
+        &mut self,
+        device: DeviceId,
+        pending: Pending,
+        method: &'static str,
+        body: Option<String>,
+        what: String,
+    ) {
         if self.pending.get(&device) == Some(&pending) {
             return;
         }
@@ -591,7 +779,11 @@ impl Backend {
         match c {
             Command::PairingReply { id, reply } => return self.reply(id, reply),
             Command::SelectAdapter { adapter } => {
-                if self.objects.get(&adapter.0).is_some_and(|i| i.contains_key(ADAPTER)) {
+                if self
+                    .objects
+                    .get(&adapter.0)
+                    .is_some_and(|i| i.contains_key(ADAPTER))
+                {
                     self.selected = Some(adapter);
                     self.dirty = true;
                 }
@@ -609,31 +801,67 @@ impl Backend {
         }
         match c {
             Command::SetPowered { adapter, on } => {
-                let what = if on { "Couldn't turn Bluetooth on" } else { "Couldn't turn Bluetooth off" };
+                let what = if on {
+                    "Couldn't turn Bluetooth on"
+                } else {
+                    "Couldn't turn Bluetooth off"
+                };
                 self.set_adapter(adapter, "Powered", Value::Bool(on), what.into());
             }
             Command::SetDiscoverable { adapter, on } => {
-                let what = format!("Couldn't make {} {}", self.adapter_name(&adapter), if on { "visible" } else { "hidden" });
+                let what = format!(
+                    "Couldn't make {} {}",
+                    self.adapter_name(&adapter),
+                    if on { "visible" } else { "hidden" }
+                );
                 self.set_adapter(adapter, "Discoverable", Value::Bool(on), what);
             }
-            Command::SetDiscoverableTimeout { adapter, seconds } => self.set_adapter(adapter, "DiscoverableTimeout", Value::U32(seconds), "Couldn't change the timeout".into()),
-            Command::SetPairable { adapter, on } => self.set_adapter(adapter, "Pairable", Value::Bool(on), "Couldn't change pairable".into()),
-            Command::SetPairableTimeout { adapter, seconds } => self.set_adapter(adapter, "PairableTimeout", Value::U32(seconds), "Couldn't change the timeout".into()),
-            Command::SetAdapterAlias { adapter, alias } => self.set_adapter(adapter, "Alias", Value::from(alias), "Couldn't rename the adapter".into()),
+            Command::SetDiscoverableTimeout { adapter, seconds } => self.set_adapter(
+                adapter,
+                "DiscoverableTimeout",
+                Value::U32(seconds),
+                "Couldn't change the timeout".into(),
+            ),
+            Command::SetPairable { adapter, on } => self.set_adapter(
+                adapter,
+                "Pairable",
+                Value::Bool(on),
+                "Couldn't change pairable".into(),
+            ),
+            Command::SetPairableTimeout { adapter, seconds } => self.set_adapter(
+                adapter,
+                "PairableTimeout",
+                Value::U32(seconds),
+                "Couldn't change the timeout".into(),
+            ),
+            Command::SetAdapterAlias { adapter, alias } => self.set_adapter(
+                adapter,
+                "Alias",
+                Value::from(alias),
+                "Couldn't rename the adapter".into(),
+            ),
             Command::StartDiscovery { adapter } => {
                 if !self.discovering.insert(adapter.clone()) {
                     return;
                 }
-                self.spawn(None, None, "Couldn't scan for devices".into(), move |bus, _| {
-                    let filter: HashMap<&str, Value> = HashMap::from([("Transport", Value::from("auto"))]);
-                    if let Err(e) = call(bus, &adapter.0, ADAPTER, "SetDiscoveryFilter", &(filter,)) {
-                        log!("SetDiscoveryFilter failed: {e}");
-                    }
-                    match call(bus, &adapter.0, ADAPTER, "StartDiscovery", &()) {
-                        Err(e) if !is_error(&e, "InProgress") => Err(e.into()),
-                        _ => Ok(()),
-                    }
-                });
+                self.spawn(
+                    None,
+                    None,
+                    "Couldn't scan for devices".into(),
+                    move |bus, _| {
+                        let filter: HashMap<&str, Value> =
+                            HashMap::from([("Transport", Value::from("auto"))]);
+                        if let Err(e) =
+                            call(bus, &adapter.0, ADAPTER, "SetDiscoveryFilter", &(filter,))
+                        {
+                            log!("SetDiscoveryFilter failed: {e}");
+                        }
+                        match call(bus, &adapter.0, ADAPTER, "StartDiscovery", &()) {
+                            Err(e) if !is_error(&e, "InProgress") => Err(e.into()),
+                            _ => Ok(()),
+                        }
+                    },
+                );
             }
             Command::StopDiscovery { adapter } => {
                 if self.discovering.remove(&adapter) {
@@ -658,24 +886,36 @@ impl Backend {
                 let name = self.name(&device);
                 self.cancelled.remove(&device);
                 let (path, id) = (device.0.clone(), device.clone());
-                self.spawn(Some(device), Some(Pending::Pairing), format!("Couldn't pair with {name}"), move |bus, tx| {
-                    match call(bus, &path, DEVICE, "Pair", &()) {
-                        Err(e) if !is_error(&e, "AlreadyExists") => return Err(e.into()),
-                        _ => {}
-                    }
-                    if let Err(e) = set(bus, &path, DEVICE, "Trusted", Value::Bool(true)) {
-                        log!("couldn't trust {path}: {e}");
-                    }
-                    let _ = tx.send(Event::Progress(id, Pending::Connecting));
-                    match call(bus, &path, DEVICE, "Connect", &()) {
-                        Err(e) => Err(Fail { what: Some(format!("Couldn't connect to {name}")), error: Box::new(e) }),
-                        Ok(_) => Ok(()),
-                    }
-                });
+                self.spawn(
+                    Some(device),
+                    Some(Pending::Pairing),
+                    format!("Couldn't pair with {name}"),
+                    move |bus, tx| {
+                        match call(bus, &path, DEVICE, "Pair", &()) {
+                            Err(e) if !is_error(&e, "AlreadyExists") => return Err(e.into()),
+                            _ => {}
+                        }
+                        if let Err(e) = set(bus, &path, DEVICE, "Trusted", Value::Bool(true)) {
+                            log!("couldn't trust {path}: {e}");
+                        }
+                        let _ = tx.send(Event::Progress(id, Pending::Connecting));
+                        match call(bus, &path, DEVICE, "Connect", &()) {
+                            Err(e) => Err(Fail {
+                                what: Some(format!("Couldn't connect to {name}")),
+                                error: Box::new(e),
+                            }),
+                            Ok(_) => Ok(()),
+                        }
+                    },
+                );
             }
             Command::CancelPair { device } => {
                 self.cancelled.insert(device.clone());
-                if self.pairing.as_ref().is_some_and(|l| l.request.device == device) {
+                if self
+                    .pairing
+                    .as_ref()
+                    .is_some_and(|l| l.request.device == device)
+                {
                     self.pairing = None;
                     self.dirty = true;
                 }
@@ -706,24 +946,48 @@ impl Backend {
                 self.set_device(device, "Alias", Value::from(alias), what);
             }
             Command::Remove { device } => {
-                let Some(d) = map::device(&device.0, &self.objects) else { return };
+                let Some(d) = map::device(&device.0, &self.objects) else {
+                    return;
+                };
                 let what = format!("Couldn't forget {}", d.display_name());
                 let (adapter, path) = (d.adapter.0, device.0.clone());
-                self.spawn(Some(device), Some(Pending::Removing), what, move |bus, _| {
-                    let path = ObjectPath::try_from(path.as_str()).map_err(zbus::Error::from)?;
-                    call(bus, &adapter, ADAPTER, "RemoveDevice", &(path,))?;
-                    Ok(())
-                });
+                self.spawn(
+                    Some(device),
+                    Some(Pending::Removing),
+                    what,
+                    move |bus, _| {
+                        let path =
+                            ObjectPath::try_from(path.as_str()).map_err(zbus::Error::from)?;
+                        call(bus, &adapter, ADAPTER, "RemoveDevice", &(path,))?;
+                        Ok(())
+                    },
+                );
             }
             Command::ConnectProfile { device, uuid } => {
-                let what = format!("Couldn't connect {} on {}", Service::new(&uuid).name, self.name(&device));
+                let what = format!(
+                    "Couldn't connect {} on {}",
+                    Service::new(&uuid).name,
+                    self.name(&device)
+                );
                 self.device_call(device, Pending::Profile, "ConnectProfile", Some(uuid), what);
             }
             Command::DisconnectProfile { device, uuid } => {
-                let what = format!("Couldn't disconnect {} on {}", Service::new(&uuid).name, self.name(&device));
-                self.device_call(device, Pending::Profile, "DisconnectProfile", Some(uuid), what);
+                let what = format!(
+                    "Couldn't disconnect {} on {}",
+                    Service::new(&uuid).name,
+                    self.name(&device)
+                );
+                self.device_call(
+                    device,
+                    Pending::Profile,
+                    "DisconnectProfile",
+                    Some(uuid),
+                    what,
+                );
             }
-            Command::PairingReply { .. } | Command::SelectAdapter { .. } | Command::DismissIssue { .. } => {}
+            Command::PairingReply { .. }
+            | Command::SelectAdapter { .. }
+            | Command::DismissIssue { .. } => {}
         }
     }
 
@@ -736,11 +1000,15 @@ impl Backend {
         }
         let device = DeviceId(call.device);
         log!("agent: {:?} for {device}", call.ask);
-        if let (agent::Ask::DisplayPasskey { passkey, entered }, Some(live)) = (&call.ask, self.pairing.as_mut())
+        if let (agent::Ask::DisplayPasskey { passkey, entered }, Some(live)) =
+            (&call.ask, self.pairing.as_mut())
             && live.request.device == device
             && matches!(live.request.kind, PairingKind::DisplayPasskey { .. })
         {
-            live.request.kind = PairingKind::DisplayPasskey { passkey: *passkey, entered: *entered };
+            live.request.kind = PairingKind::DisplayPasskey {
+                passkey: *passkey,
+                entered: *entered,
+            };
             self.dirty = true;
             return;
         }
@@ -748,19 +1016,29 @@ impl Backend {
             agent::Ask::PinCode => PairingKind::RequestPin,
             agent::Ask::DisplayPinCode(pin) => PairingKind::DisplayPin { pin },
             agent::Ask::Passkey => PairingKind::RequestPasskey,
-            agent::Ask::DisplayPasskey { passkey, entered } => PairingKind::DisplayPasskey { passkey, entered },
+            agent::Ask::DisplayPasskey { passkey, entered } => {
+                PairingKind::DisplayPasskey { passkey, entered }
+            }
             agent::Ask::Confirmation(passkey) => PairingKind::Confirm { passkey },
             agent::Ask::Authorization => PairingKind::AuthorizePairing,
-            agent::Ask::AuthorizeService(uuid) => PairingKind::Authorize { service: Service::new(&uuid) },
+            agent::Ask::AuthorizeService(uuid) => PairingKind::Authorize {
+                service: Service::new(&uuid),
+            },
         };
         let id = self.id();
         // Replacing an unanswered request drops its answer channel, which cancels it.
-        self.pairing = Some(Live { request: PairingRequest { id, device, kind }, answer: call.answer, deadline: Instant::now() + PAIRING_TIMEOUT });
+        self.pairing = Some(Live {
+            request: PairingRequest { id, device, kind },
+            answer: call.answer,
+            deadline: Instant::now() + PAIRING_TIMEOUT,
+        });
         self.dirty = true;
     }
 
     fn reply(&mut self, id: u64, reply: Reply) {
-        let Some(live) = self.pairing.take_if(|l| l.request.id == id) else { return };
+        let Some(live) = self.pairing.take_if(|l| l.request.id == id) else {
+            return;
+        };
         self.dirty = true;
         let device = live.request.device;
         if reply == Reply::Reject {

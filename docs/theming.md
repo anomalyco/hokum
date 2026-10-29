@@ -83,7 +83,7 @@ appearance under Appearance and the rest under Behaviour.
 
 | Key | Value |
 |---|---|
-| `position` | `top-right`, `top-left`, `bottom-right`, `bottom-left` (on the focused screen) |
+| `position` | `top-right`, `top-left`, `top-center`, `bottom-right`, `bottom-left`, `bottom-center` (on the focused screen) |
 | `stay` | seconds ordinary notifications stay when the app doesn't say |
 | `show-at-most` | cards shown at once; the rest wait behind a "N more" pill |
 | `pause-on-hover` | `#true`: timers wait while the pointer is over a card |

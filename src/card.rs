@@ -8,7 +8,7 @@ use rune::{Color, Cursor, Edge, El, Image, Shadow, Spring, Transition, col, el, 
 use rune_kit::Kit;
 
 use crate::icons::Source;
-use crate::style::Mark;
+use crate::style::{Mark, Position, Side};
 use crate::template::{Ctx, render};
 use crate::theme::{Enter, Fill, Lift, Theme};
 
@@ -63,7 +63,12 @@ pub struct Note {
 }
 
 impl Note {
-    pub fn new(id: u32, app: impl Into<String>, summary: impl Into<String>, body: impl Into<String>) -> Note {
+    pub fn new(
+        id: u32,
+        app: impl Into<String>,
+        summary: impl Into<String>,
+        body: impl Into<String>,
+    ) -> Note {
         Note {
             id,
             slot: id,
@@ -95,7 +100,10 @@ impl Note {
 
     /// The program to run for action `key`, if the notification carries one.
     pub fn command(&self, key: &str) -> Option<&[String]> {
-        self.commands.iter().find(|(k, _)| k == key).map(|(_, argv)| argv.as_slice())
+        self.commands
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, argv)| argv.as_slice())
     }
 
     /// Decodes the icon and picture with `cache` (the decode itself runs on the cache's worker).
@@ -103,7 +111,11 @@ impl Note {
         let load = |src: &Option<Source>| -> Option<Image> {
             Some(match src.as_ref()? {
                 Source::File(path) => cache.file(path, 64.0, 2.0),
-                Source::Rgba { width, height, bytes } => cache.rgba(*width, *height, bytes.clone()),
+                Source::Rgba {
+                    width,
+                    height,
+                    bytes,
+                } => cache.rgba(*width, *height, bytes.clone()),
             })
         };
         self.icon = load(&self.icon_src);
@@ -133,7 +145,9 @@ pub fn clock() -> String {
 
 /// A stable colour per app, so the same sender always reads the same at a glance.
 pub fn tint(app: &str) -> Color {
-    let h = app.bytes().fold(2166136261u32, |h, b| (h ^ b as u32).wrapping_mul(16777619));
+    let h = app
+        .bytes()
+        .fold(2166136261u32, |h, b| (h ^ b as u32).wrapping_mul(16777619));
     oklch(0.64, 0.13, (h % 360) as f32)
 }
 
@@ -145,13 +159,26 @@ pub fn shadows(lift: Lift, k: &Kit, accent: Color) -> Vec<Shadow> {
             let mut v = k.elevation.overlay.clone();
             if lift == Lift::Deep {
                 let a = if k.dark { 0.45 } else { 0.16 };
-                v.push(Shadow { y: 14.0, blur: 36.0, color: Color::BLACK.alpha(a), ..Default::default() });
+                v.push(Shadow {
+                    y: 14.0,
+                    blur: 36.0,
+                    color: Color::BLACK.alpha(a),
+                    ..Default::default()
+                });
             }
             v
         }
         Lift::Glow => vec![
-            Shadow { blur: 28.0, color: accent.alpha(0.45), ..Default::default() },
-            Shadow { blur: 6.0, color: accent.alpha(0.35), ..Default::default() },
+            Shadow {
+                blur: 28.0,
+                color: accent.alpha(0.45),
+                ..Default::default()
+            },
+            Shadow {
+                blur: 6.0,
+                color: accent.alpha(0.35),
+                ..Default::default()
+            },
         ],
     }
 }
@@ -163,7 +190,10 @@ pub fn shadow_reach(theme: &Theme) -> f32 {
         .into_iter()
         .flat_map(|dark| {
             let k = rune_theme_opencode::kit(dark);
-            theme.lifts(dark).into_iter().flat_map(move |l| shadows(l, k, Color::BLACK))
+            theme
+                .lifts(dark)
+                .into_iter()
+                .flat_map(move |l| shadows(l, k, Color::BLACK))
         })
         .filter(|sh| !sh.inset)
         .map(|sh| sh.x.abs() + sh.spread.max(0.0) + sh.blur * 1.5)
@@ -171,8 +201,9 @@ pub fn shadow_reach(theme: &Theme) -> f32 {
         .ceil()
 }
 
-/// The card for `n` in `theme`. `from_right` picks the edge it slides in from.
-pub fn card<S: Cards>(n: &Note, theme: &Theme, k: &Kit, from_right: bool) -> El {
+/// The card for `n` in `theme` at `position`, which picks the edge it slides in from: the side
+/// of the screen for a corner, the top or bottom edge for a centered stack.
+pub fn card<S: Cards>(n: &Note, theme: &Theme, k: &Kit, position: Position) -> El {
     let look = theme.look(n, k.dark);
     let t = &look.tokens;
     let tint = tint(&n.app);
@@ -217,38 +248,82 @@ pub fn card<S: Cards>(n: &Note, theme: &Theme, k: &Kit, from_right: bool) -> El 
                 .gap(9.0)
                 .items_stretch()
                 .child(el().key("stripe").w(3.0).radius(1.5).fill(accent))
-                .child(col().key("main").grow(1.0).shrink().w(0.0).gap(t.gap).children(content)),
+                .child(
+                    col()
+                        .key("main")
+                        .grow(1.0)
+                        .shrink()
+                        .w(0.0)
+                        .gap(t.gap)
+                        .children(content),
+                ),
         )
     } else {
         root.children(content)
     };
-    let dx = if from_right { 48.0 } else { -48.0 };
     let (enter, exit) = match t.enter {
-        Enter::Slide => (
-            Transition::offset(dx, 0.0).combined(Transition::opacity()).combined(Transition::scale(0.97)),
-            Transition::move_edge(if from_right { Edge::Trailing } else { Edge::Leading }).combined(Transition::opacity()),
-        ),
+        Enter::Slide => slide(position),
         Enter::Fade => (Transition::opacity(), Transition::opacity()),
         Enter::Scale => (Transition::scale(0.9), Transition::scale(0.95)),
-        Enter::Drop => (Transition::offset(0.0, -24.0).combined(Transition::opacity()), Transition::offset(0.0, -12.0).combined(Transition::opacity())),
+        Enter::Drop => (
+            Transition::offset(0.0, -24.0).combined(Transition::opacity()),
+            Transition::offset(0.0, -12.0).combined(Transition::opacity()),
+        ),
     };
-    root.transition(Transition::asymmetric(enter, exit)).motion(Spring::new(t.motion.0, t.motion.1))
+    root.transition(Transition::asymmetric(enter, exit))
+        .motion(Spring::new(t.motion.0, t.motion.1))
+}
+
+/// A card sliding in from, and gliding out toward, its side of the screen. Centered stacks
+/// move vertically from their edge and leave by a short glide rather than a full edge move,
+/// which would sweep across the cards next to it.
+fn slide(position: Position) -> (Transition, Transition) {
+    let enter = |dx: f32, dy: f32| {
+        Transition::offset(dx, dy)
+            .combined(Transition::opacity())
+            .combined(Transition::scale(0.97))
+    };
+    let edge = |e: Edge| Transition::move_edge(e).combined(Transition::opacity());
+    let up = if position.bottom() { 1.0 } else { -1.0 };
+    match position.side() {
+        Side::Right => (enter(48.0, 0.0), edge(Edge::Trailing)),
+        Side::Left => (enter(-48.0, 0.0), edge(Edge::Leading)),
+        Side::Center => (enter(0.0, 40.0 * up), enter(0.0, 24.0 * up)),
+    }
 }
 
 /// Notes that show off every part of a card, for previews and snapshots.
 pub fn samples() -> Vec<Note> {
-    let mut a = Note::new(1, "Slack", "Dax", "hokum looks sick 👋 ship it before anyone sees the mako ones");
+    let mut a = Note::new(
+        1,
+        "Slack",
+        "Dax",
+        "hokum looks sick 👋 ship it before anyone sees the mako ones",
+    );
     a.context = Some("#abattoir".into());
-    a.actions = vec![("reply".into(), "Reply".into()), ("later".into(), "Later".into())];
+    a.actions = vec![
+        ("reply".into(), "Reply".into()),
+        ("later".into(), "Later".into()),
+    ];
     a.has_default = true;
     a.icon_src = crate::icons::for_app("", Some("slack"), "Slack").map(Source::File);
     let mut b = Note::new(2, "Volume", "Speakers", "");
     b.value = Some(0.62);
     b.tag = Some("volume".into());
     b.icon_src = crate::icons::icon("audio-volume-high").map(Source::File);
-    let mut c = Note::new(3, "Firefox", "Download complete", "hokum-x86_64.tar.zst · 4.2 MB");
+    let mut c = Note::new(
+        3,
+        "Firefox",
+        "Download complete",
+        "hokum-x86_64.tar.zst · 4.2 MB",
+    );
     c.icon_src = crate::icons::for_app("", Some("firefox"), "Firefox").map(Source::File);
-    let mut d = Note::new(4, "Battery", "Battery critically low", "4% remaining. Plug in now or the session will suspend.");
+    let mut d = Note::new(
+        4,
+        "Battery",
+        "Battery critically low",
+        "4% remaining. Plug in now or the session will suspend.",
+    );
     d.urgency = 2;
     d.timeout = Timeout::Never;
     vec![a, d, b, c]

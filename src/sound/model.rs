@@ -272,11 +272,17 @@ pub struct Volume {
 impl Volume {
     /// The same volume on every channel of a stereo pair.
     pub fn stereo(v: f32) -> Self {
-        Volume { channels: vec![v, v], positions: vec![ChannelPosition::FL, ChannelPosition::FR] }
+        Volume {
+            channels: vec![v, v],
+            positions: vec![ChannelPosition::FL, ChannelPosition::FR],
+        }
     }
 
     pub fn mono(v: f32) -> Self {
-        Volume { channels: vec![v], positions: vec![ChannelPosition::Mono] }
+        Volume {
+            channels: vec![v],
+            positions: vec![ChannelPosition::Mono],
+        }
     }
 
     /// The one number a slider shows: the loudest channel (as pavucontrol does).
@@ -295,15 +301,26 @@ impl Volume {
             }
         }
         let loud = left.max(right);
-        if loud <= 0.0 { 0.0 } else { (right - left) / loud }
+        if loud <= 0.0 {
+            0.0
+        } else {
+            (right - left) / loud
+        }
     }
 
     /// This volume scaled so `combined()` is `v`, keeping the balance between channels.
     pub fn with_combined(&self, v: f32) -> Self {
         let v = v.clamp(0.0, MAX_VOLUME);
         let current = self.combined();
-        let channels = if current <= 0.0 { vec![v; self.channels.len()] } else { self.channels.iter().map(|c| c / current * v).collect() };
-        Volume { channels, positions: self.positions.clone() }
+        let channels = if current <= 0.0 {
+            vec![v; self.channels.len()]
+        } else {
+            self.channels.iter().map(|c| c / current * v).collect()
+        };
+        Volume {
+            channels,
+            positions: self.positions.clone(),
+        }
     }
 
     /// This volume with `balance` applied: the far side quieter, the near side at `combined()`.
@@ -320,7 +337,10 @@ impl Volume {
                 Side::Centre => top,
             })
             .collect();
-        Volume { channels, positions: self.positions.clone() }
+        Volume {
+            channels,
+            positions: self.positions.clone(),
+        }
     }
 }
 
@@ -446,32 +466,72 @@ pub enum Target {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     /// Sets the combined volume (`Volume::with_combined`), keeping the channel balance.
-    SetVolume { target: Target, volume: f32 },
+    SetVolume {
+        target: Target,
+        volume: f32,
+    },
     /// Sets every channel exactly.
-    SetChannelVolumes { target: Target, volume: Volume },
-    SetMute { target: Target, mute: bool },
+    SetChannelVolumes {
+        target: Target,
+        volume: Volume,
+    },
+    SetMute {
+        target: Target,
+        mute: bool,
+    },
     /// `-1.0..=1.0`, see `Volume::with_balance`.
-    SetBalance { target: Target, balance: f32 },
+    SetBalance {
+        target: Target,
+        balance: f32,
+    },
     /// Makes a sink or source the default (persisted by the session manager).
-    SetDefault { device: Id },
-    SetPort { device: Id, port: String },
-    SetProfile { card: Id, profile: String },
+    SetDefault {
+        device: Id,
+    },
+    SetPort {
+        device: Id,
+        port: String,
+    },
+    SetProfile {
+        card: Id,
+        profile: String,
+    },
     /// Moves a stream to another device (and remembers it for the app, as pavucontrol does).
-    MoveStream { stream: Id, device: Id },
+    MoveStream {
+        stream: Id,
+        device: Id,
+    },
     /// Turns live levels on or off for these targets. Metering costs CPU; the UI meters only
     /// what's on screen.
-    SetMetering { targets: Vec<Target>, on: bool },
+    SetMetering {
+        targets: Vec<Target>,
+        on: bool,
+    },
     /// Creates a null sink named `name` (a "virtual device" to route apps into).
-    CreateVirtualSink { name: String },
+    CreateVirtualSink {
+        name: String,
+    },
     /// Removes a virtual sink this app created (`Device::is_ours`).
-    RemoveVirtualSink { device: Id },
+    RemoveVirtualSink {
+        device: Id,
+    },
     /// Forces the graph's rate and quantum; `None` returns either to automatic.
-    SetRateQuantum { rate: Option<u32>, quantum: Option<u32> },
+    SetRateQuantum {
+        rate: Option<u32>,
+        quantum: Option<u32>,
+    },
     /// Links two ports (routing view).
-    Link { output_port: Id, input_port: Id },
-    Unlink { link: Id },
+    Link {
+        output_port: Id,
+        input_port: Id,
+    },
+    Unlink {
+        link: Id,
+    },
     /// Drops an issue from `State::issues` once the user has seen it.
-    DismissIssue { index: usize },
+    DismissIssue {
+        index: usize,
+    },
 }
 
 type Listener = Box<dyn Fn(&Arc<State>) + Send + Sync>;
@@ -492,7 +552,11 @@ pub struct Audio {
 impl Audio {
     /// The latest snapshot.
     pub fn state(&self) -> Arc<State> {
-        self.shared.state.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.shared
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Asks the backend for a change. Never blocks; dropped silently if the backend is gone.
@@ -509,8 +573,15 @@ impl Audio {
             *next += 1;
             *next
         };
-        self.shared.listeners.lock().unwrap_or_else(|e| e.into_inner()).push((id, Box::new(f)));
-        Subscription { shared: Arc::downgrade(&self.shared), id }
+        self.shared
+            .listeners
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((id, Box::new(f)));
+        Subscription {
+            shared: Arc::downgrade(&self.shared),
+            id,
+        }
     }
 
     /// Every new snapshot on a channel, for code that would rather poll.
@@ -533,7 +604,11 @@ pub struct Subscription {
 impl Drop for Subscription {
     fn drop(&mut self) {
         if let Some(shared) = self.shared.upgrade() {
-            shared.listeners.lock().unwrap_or_else(|e| e.into_inner()).retain(|(id, _)| *id != self.id);
+            shared
+                .listeners
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .retain(|(id, _)| *id != self.id);
         }
     }
 }
@@ -554,7 +629,13 @@ impl Driver {
             *current = state.clone();
             state
         };
-        for (_, f) in self.shared.listeners.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+        for (_, f) in self
+            .shared
+            .listeners
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+        {
             f(&state);
         }
     }
@@ -562,12 +643,25 @@ impl Driver {
     /// Says the backend stopped, for after it panicked and dropped this driver.
     pub fn on_stop(&self) -> impl Fn(String) + Send + 'static {
         let shared = self.shared.clone();
-        move |why: String| Driver { shared: shared.clone(), commands: mpsc::channel().1 }.publish(State { connection: Connection::Lost(why), ..State::default() })
+        move |why: String| {
+            Driver {
+                shared: shared.clone(),
+                commands: mpsc::channel().1,
+            }
+            .publish(State {
+                connection: Connection::Lost(why),
+                ..State::default()
+            })
+        }
     }
 
     /// The latest published snapshot.
     pub fn current(&self) -> Arc<State> {
-        self.shared.state.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.shared
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Commands from the UI, in order. Disconnected once every [`Audio`] is dropped.
@@ -584,9 +678,22 @@ impl Driver {
 
 /// A connected pair: give [`Audio`] to the UI and [`Driver`] to the backend's thread.
 pub fn channel() -> (Audio, Driver) {
-    let shared = Arc::new(Shared { state: Mutex::new(Arc::new(State::default())), listeners: Mutex::new(Vec::new()), next: Mutex::new(0) });
+    let shared = Arc::new(Shared {
+        state: Mutex::new(Arc::new(State::default())),
+        listeners: Mutex::new(Vec::new()),
+        next: Mutex::new(0),
+    });
     let (tx, rx) = mpsc::channel();
-    (Audio { shared: shared.clone(), commands: tx }, Driver { shared, commands: rx })
+    (
+        Audio {
+            shared: shared.clone(),
+            commands: tx,
+        },
+        Driver {
+            shared,
+            commands: rx,
+        },
+    )
 }
 
 /// Which backend the Sound module runs.
@@ -613,7 +720,10 @@ mod tests {
 
     #[test]
     fn combined_volume_keeps_the_balance() {
-        let v = Volume { channels: vec![0.5, 1.0], positions: vec![ChannelPosition::FL, ChannelPosition::FR] };
+        let v = Volume {
+            channels: vec![0.5, 1.0],
+            positions: vec![ChannelPosition::FL, ChannelPosition::FR],
+        };
         assert_eq!(v.combined(), 1.0);
         assert!((v.balance() - 0.5).abs() < 1e-6);
         let half = v.with_combined(0.5);
@@ -640,6 +750,9 @@ mod tests {
         driver.publish(State::default());
         assert!(rx.try_recv().is_err());
         audio.send(Command::SetDefault { device: 3 });
-        assert_eq!(driver.commands().recv().unwrap(), Command::SetDefault { device: 3 });
+        assert_eq!(
+            driver.commands().recv().unwrap(),
+            Command::SetDefault { device: 3 }
+        );
     }
 }

@@ -5,12 +5,15 @@
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
-use rune::{Align, AppHandle, AppSpec, Cursor, Cx, El, OverlayHandle, OverlayInput, OverlayOptions, OverlayPlacement, OverlaySpec, ScreenEdge, Transition, Tx, col, el, row, text};
+use rune::{
+    Align, AppHandle, AppSpec, Cursor, Cx, El, OverlayHandle, OverlayInput, OverlayOptions,
+    OverlayPlacement, OverlaySpec, ScreenEdge, Transition, Tx, col, el, row, text,
+};
 use rune_kit::Kit;
 
 use crate::card::{Cards, Note, Timeout, card, samples};
 use crate::script::Script;
-use crate::style::{Appearance, Behaviour};
+use crate::style::{Appearance, Behaviour, Position, Side};
 use crate::theme::Theme;
 use crate::watch::Config;
 
@@ -91,17 +94,23 @@ impl Ui {
         if config.loaded.ok() || self.theme.rules.is_empty() && self.theme.templates.is_empty() {
             self.theme = config.loaded.theme.clone();
         }
-        self.script = config.script.as_deref().and_then(|src| match Script::compile(src) {
-            Ok(s) => Some(s),
-            Err(e) => {
-                eprintln!("hokum: script.rhai: {e}");
-                None
-            }
-        });
-        let behaviour = if config.loaded.ok() { config.loaded.behaviour } else { self.settings.clone() };
+        self.script = config
+            .script
+            .as_deref()
+            .and_then(|src| match Script::compile(src) {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    eprintln!("hokum: script.rhai: {e}");
+                    None
+                }
+            });
+        let behaviour = if config.loaded.ok() {
+            config.loaded.behaviour
+        } else {
+            self.settings.clone()
+        };
         self.apply(behaviour);
     }
-
 
     pub fn dark(&self) -> bool {
         match self.settings.appearance {
@@ -115,7 +124,7 @@ impl Ui {
     pub fn apply(&mut self, settings: Behaviour) {
         if let Some(h) = &self.handle {
             h.set_placement(Some(placement(&settings)));
-            h.resize(size(&self.theme, self.dark()));
+            h.resize(size(&self.theme, self.dark(), settings.position));
         }
         if !settings.pause_on_hover {
             self.hover(false);
@@ -223,7 +232,11 @@ impl Ui {
 
     /// `hokum dismiss [--all]`: closes the newest card, or every card. Returns how many closed.
     pub fn dismiss_newest(&mut self, all: bool) -> u32 {
-        let n = if all { self.notes.len() } else { self.notes.len().min(1) };
+        let n = if all {
+            self.notes.len()
+        } else {
+            self.notes.len().min(1)
+        };
         match (all, self.notes.first().map(|n| n.id)) {
             (true, _) => self.clear(),
             (false, Some(id)) => self.dismiss(id),
@@ -234,14 +247,24 @@ impl Ui {
 
     /// `hokum invoke`: does what clicking the newest card does. False without a card.
     pub fn activate_newest(&mut self, token: Option<String>) -> bool {
-        let Some(id) = self.notes.first().map(|n| n.id) else { return false };
+        let Some(id) = self.notes.first().map(|n| n.id) else {
+            return false;
+        };
         self.activate_with(id, token);
         true
     }
 
     fn activate_with(&mut self, id: u32, token: Option<String>) {
-        let default = self.notes.iter().find(|n| n.id == id).is_some_and(|n| n.has_default || n.command("default").is_some());
-        if default { self.invoke_with(id, "default", token) } else { self.dismiss(id) }
+        let default = self
+            .notes
+            .iter()
+            .find(|n| n.id == id)
+            .is_some_and(|n| n.has_default || n.command("default").is_some());
+        if default {
+            self.invoke_with(id, "default", token)
+        } else {
+            self.dismiss(id)
+        }
     }
 
     fn invoke_with(&mut self, id: u32, key: &str, token: Option<String>) {
@@ -272,7 +295,12 @@ impl Ui {
     }
 
     fn expire(&mut self, now: Instant) {
-        let gone: Vec<u32> = self.notes.iter().filter(|n| n.deadline.is_some_and(|d| d <= now)).map(|n| n.id).collect();
+        let gone: Vec<u32> = self
+            .notes
+            .iter()
+            .filter(|n| n.deadline.is_some_and(|d| d <= now))
+            .map(|n| n.id)
+            .collect();
         for id in gone {
             self.close(id, Reason::Expired);
         }
@@ -292,7 +320,13 @@ impl Ui {
             (true, Some(t)) => Some(t),
             (true, None) => Some(Instant::now() + HIDE_AFTER),
         };
-        let _ = self.timer.send(self.notes.iter().filter_map(|n| n.deadline).chain(self.hide_at).min());
+        let _ = self.timer.send(
+            self.notes
+                .iter()
+                .filter_map(|n| n.deadline)
+                .chain(self.hide_at)
+                .min(),
+        );
     }
 }
 
@@ -302,13 +336,21 @@ impl Cards for Ui {
     }
 
     fn invoke(&mut self, id: u32, key: &str) {
-        let desktop = self.notes.iter().find(|n| n.id == id).and_then(|n| n.desktop.as_deref());
+        let desktop = self
+            .notes
+            .iter()
+            .find(|n| n.id == id)
+            .and_then(|n| n.desktop.as_deref());
         let token = rune::press_activation_token(desktop);
         self.invoke_with(id, key, token);
     }
 
     fn activate(&mut self, id: u32) {
-        let desktop = self.notes.iter().find(|n| n.id == id).and_then(|n| n.desktop.as_deref());
+        let desktop = self
+            .notes
+            .iter()
+            .find(|n| n.id == id)
+            .and_then(|n| n.desktop.as_deref());
         let token = rune::press_activation_token(desktop);
         self.activate_with(id, token);
     }
@@ -325,7 +367,10 @@ impl Cards for Ui {
             if on {
                 n.left = n.deadline.take().map(|d| d.saturating_duration_since(now));
             } else {
-                n.deadline = n.left.take().map(|l| now + l.max(Duration::from_millis(1200)));
+                n.deadline = n
+                    .left
+                    .take()
+                    .map(|l| now + l.max(Duration::from_millis(1200)));
             }
         }
         self.reschedule();
@@ -338,7 +383,11 @@ fn run(argv: &[String], token: Option<&str>) {
     use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
     let mut cmd = Command::new(&argv[0]);
-    cmd.args(&argv[1..]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).process_group(0);
+    cmd.args(&argv[1..])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0);
     if let Some(t) = token {
         cmd.env("XDG_ACTIVATION_TOKEN", t);
     }
@@ -351,49 +400,93 @@ fn run(argv: &[String], token: Option<&str>) {
 }
 
 /// The stack sits `GUTTER` from the screen's edge; the side away from it gets room for the
-/// theme's shadow, so the shadow isn't cut off at the surface's edge. That room is
-/// click-through: only cards take input.
-fn size(theme: &Theme, dark: bool) -> (f32, f32) {
-    (theme.base(dark).width + GUTTER + crate::card::shadow_reach(theme).max(GUTTER), HEIGHT)
+/// theme's shadow, so the shadow isn't cut off at the surface's edge. A centered stack gets
+/// that room on both sides. The room is click-through: only cards take input.
+fn size(theme: &Theme, dark: bool, position: Position) -> (f32, f32) {
+    let room = crate::card::shadow_reach(theme).max(GUTTER);
+    let sides = match position.side() {
+        Side::Center => 2.0 * room,
+        Side::Left | Side::Right => GUTTER + room,
+    };
+    (theme.base(dark).width + sides, HEIGHT)
 }
 
-/// The corner of the screen for `s`.
+/// The corner, or the middle of the top or bottom edge, of the screen for `s`.
 fn placement(s: &Behaviour) -> OverlayPlacement {
     OverlayPlacement::Edge {
-        edge: if s.position.bottom() { ScreenEdge::Bottom } else { ScreenEdge::Top },
+        edge: if s.position.bottom() {
+            ScreenEdge::Bottom
+        } else {
+            ScreenEdge::Top
+        },
         margin: 0.0,
-        align: if s.position.right() { Align::End } else { Align::Start },
+        align: match s.position.side() {
+            Side::Left => Align::Start,
+            Side::Center => Align::Center,
+            Side::Right => Align::End,
+        },
         inset: 0.0,
     }
 }
 
-/// The stack of cards for `notes` in a corner of its parent, as the overlay and the settings
-/// preview both draw it.
-pub fn stack<S: Cards>(notes: &[Note], s: &Behaviour, theme: &Theme, k: &Kit, more: Option<El>) -> El {
+/// The stack of cards for `notes` in a corner (or the middle of an edge) of its parent, as the
+/// overlay and the settings preview both draw it. Top stacks grow downward, bottom ones upward.
+pub fn stack<S: Cards>(
+    notes: &[Note],
+    s: &Behaviour,
+    theme: &Theme,
+    k: &Kit,
+    more: Option<El>,
+) -> El {
     let base = theme.base(k.dark);
     let between = base.spacing;
-    let right = s.position.right();
+    let side = s.position.side();
     let bottom = s.position.bottom();
-    let shown = notes.iter().take(s.max_shown.max(1)).map(|n| card::<S>(n, theme, k, right));
-    let cards: Vec<El> = if bottom { shown.rev().collect() } else { shown.collect() };
-    let (l, r) = if right { (None, Some(GUTTER)) } else { (Some(GUTTER), None) };
-    let (t, b) = if bottom { (None, Some(GUTTER)) } else { (Some(GUTTER), None) };
+    let shown = notes
+        .iter()
+        .take(s.max_shown.max(1))
+        .map(|n| card::<S>(n, theme, k, s.position));
+    let cards: Vec<El> = if bottom {
+        shown.rev().collect()
+    } else {
+        shown.collect()
+    };
+    let (t, b) = if bottom {
+        (None, Some(GUTTER))
+    } else {
+        (Some(GUTTER), None)
+    };
     let mut col = col()
         .key("stack")
-        .pin(l, t, r, b)
         .w(base.width)
         .gap(between)
         .on_hover_change(|s: &mut S, inside, _: &mut Tx| s.hover(inside));
+    col = match side {
+        Side::Left => col.pin(Some(GUTTER), t, None, b),
+        Side::Right => col.pin(None, t, Some(GUTTER), b),
+        Side::Center => col,
+    };
     let more = more.map(|m| {
         let row = row().key("more-row").w_full().child(m);
-        if right { row.justify_end() } else { row }
+        match side {
+            Side::Left => row,
+            Side::Center => row.justify_center(),
+            Side::Right => row.justify_end(),
+        }
     });
     if bottom {
         col = col.children(more).children(cards);
     } else {
         col = col.children(cards).children(more);
     }
-    col
+    match side {
+        Side::Center => row()
+            .key("middle")
+            .pin(Some(0.0), t, Some(0.0), b)
+            .justify_center()
+            .child(col),
+        Side::Left | Side::Right => col,
+    }
 }
 
 fn more(hidden: usize, k: &Kit) -> El {
@@ -414,8 +507,18 @@ fn more(hidden: usize, k: &Kit) -> El {
         .cursor(Cursor::Pointer)
         .hit()
         .on_press(|s: &mut Ui| s.clear())
-        .child(text(format!("{hidden} more")).key("count").font(k.ty.small_medium).color(c.text_muted))
-        .child(text("Clear all").key("clear").font(k.ty.small_medium).color(c.text_base))
+        .child(
+            text(format!("{hidden} more"))
+                .key("count")
+                .font(k.ty.small_medium)
+                .color(c.text_muted),
+        )
+        .child(
+            text("Clear all")
+                .key("clear")
+                .font(k.ty.small_medium)
+                .color(c.text_base),
+        )
         .transition(Transition::opacity().combined(Transition::scale(0.9)))
 }
 
@@ -423,17 +526,24 @@ pub fn view(s: &Ui, _: &mut Cx<Ui>) -> El {
     let k = rune_theme_opencode::kit(s.dark());
     let hidden = s.notes.len().saturating_sub(s.settings.max_shown.max(1));
     let pill = (hidden > 0).then(|| more(hidden, k));
-    el().key("root").w_full().h_full().child(stack::<Ui>(&s.notes, &s.settings, &s.theme, k, pill))
+    el().key("root")
+        .w_full()
+        .h_full()
+        .child(stack::<Ui>(&s.notes, &s.settings, &s.theme, k, pill))
 }
 
 pub fn overlay(config: &Config) -> rune::ConfiguredOverlay<Ui> {
-    OverlaySpec::new("hokum", size(&config.loaded.theme, true), view)
-        .options(OverlayOptions {
-            placement: Some(placement(&config.loaded.behaviour)),
-            input: OverlayInput::Regions,
-            ..OverlayOptions::default()
-        })
-        .setup(|ui, waker| ui.cache = Some(rune::ImageCache::new(waker)))
+    OverlaySpec::new(
+        "hokum",
+        size(&config.loaded.theme, true, config.loaded.behaviour.position),
+        view,
+    )
+    .options(OverlayOptions {
+        placement: Some(placement(&config.loaded.behaviour)),
+        input: OverlayInput::Regions,
+        ..OverlayOptions::default()
+    })
+    .setup(|ui, waker| ui.cache = Some(rune::ImageCache::new(waker)))
 }
 
 /// Sleeps until the earliest deadline, then expires what's due; each reschedule replaces it.
@@ -504,12 +614,21 @@ fn bundled(s: &mut Ui, id: &str) {
 fn overflow(s: &mut Ui) {
     demo(s);
     for i in 0..3 {
-        s.upsert(Note::new(10 + i, "GitHub", format!("Review requested #{}", 412 + i), "anomalyco/hokum: first release"));
+        s.upsert(Note::new(
+            10 + i,
+            "GitHub",
+            format!("Review requested #{}", 412 + i),
+            "anomalyco/hokum: first release",
+        ));
     }
 }
 
 fn headless_state() -> Ui {
-    let mut ui = Ui::new(crate::watch::load(), std::sync::mpsc::channel().0, std::sync::mpsc::channel().0);
+    let mut ui = Ui::new(
+        crate::watch::load(),
+        std::sync::mpsc::channel().0,
+        std::sync::mpsc::channel().0,
+    );
     // `--theme light|dark` picks the appearance, as the desktop would.
     ui.system_dark = !std::env::args().any(|a| a == "light");
     ui
@@ -519,16 +638,27 @@ fn headless_state() -> Ui {
 /// where an overlay would show the desktop behind it.
 fn headless_view(s: &Ui, cx: &mut Cx<Ui>) -> El {
     let (top, bottom) = if s.dark() {
-        (rune::oklch(0.32, 0.06, 265.0), rune::oklch(0.22, 0.05, 300.0))
+        (
+            rune::oklch(0.32, 0.06, 265.0),
+            rune::oklch(0.22, 0.05, 300.0),
+        )
     } else {
-        (rune::oklch(0.86, 0.05, 230.0), rune::oklch(0.78, 0.07, 290.0))
+        (
+            rune::oklch(0.86, 0.05, 230.0),
+            rune::oklch(0.78, 0.07, 290.0),
+        )
     };
-    el().key("desktop").w_full().h_full().gradient(top, bottom).child(view(s, cx))
+    el().key("desktop")
+        .w_full()
+        .h_full()
+        .gradient(top, bottom)
+        .child(view(s, cx))
 }
 
 /// The cards as an app of their own, for headless snapshots (`hokum service --snap`).
 pub fn headless() {
-    let theme = crate::config::load().theme;
+    let loaded = crate::config::load();
+    let theme = loaded.theme;
     let spec = AppSpec {
         scenes: &[
             ("demo", demo),
@@ -548,7 +678,12 @@ pub fn headless() {
         ],
         fonts: rune_theme_opencode::FONTS,
         families: rune_theme_opencode::FAMILIES,
-        ..AppSpec::new("Hokum", size(&theme, true), headless_state, headless_view)
+        ..AppSpec::new(
+            "Hokum",
+            size(&theme, true, loaded.behaviour.position),
+            headless_state,
+            headless_view,
+        )
     };
     rune::App::new(spec).run();
 }
@@ -570,19 +705,57 @@ mod tests {
 
     #[test]
     fn surface_leaves_room_for_every_shadow() {
-        for id in ["soft", "crisp", "capsule", "ribbon", "terminal", "bubble", "signal", "pill"] {
+        for id in [
+            "soft", "crisp", "capsule", "ribbon", "terminal", "bubble", "signal", "pill",
+        ] {
             let theme = crate::theme::resolve(id).unwrap();
             let reach = crate::card::shadow_reach(&theme);
             if theme.base(true).shadow == crate::theme::Lift::Deep {
-                assert!(reach >= 54.0, "{id}: deep's blur 36 fades out 54pt away, got {reach}");
+                assert!(
+                    reach >= 54.0,
+                    "{id}: deep's blur 36 fades out 54pt away, got {reach}"
+                );
             }
             for dark in [false, true] {
                 let width = theme.base(dark).width;
-                let (w, _) = size(&theme, dark);
+                let (w, _) = size(&theme, dark, Position::TopRight);
                 // The card stays GUTTER from the screen's edge; the inner side holds the shadow.
-                assert!(w - width - GUTTER >= reach.max(GUTTER), "{id}: {w} for a {width} card");
+                assert!(
+                    w - width - GUTTER >= reach.max(GUTTER),
+                    "{id}: {w} for a {width} card"
+                );
+                // A centered card has the shadow's room on both sides.
+                let (w, _) = size(&theme, dark, Position::BottomCenter);
+                assert!(
+                    (w - width) / 2.0 >= reach.max(GUTTER),
+                    "{id}: {w} for a centered {width} card"
+                );
             }
         }
+    }
+
+    #[test]
+    fn centered_stacks_sit_in_the_middle_of_their_edge() {
+        let at = |position| {
+            placement(&Behaviour {
+                position,
+                ..Behaviour::default()
+            })
+        };
+        let edge = |p| match at(p) {
+            OverlayPlacement::Edge { edge, align, .. } => (edge, align),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(edge(Position::TopCenter), (ScreenEdge::Top, Align::Center));
+        assert_eq!(
+            edge(Position::BottomCenter),
+            (ScreenEdge::Bottom, Align::Center)
+        );
+        assert_eq!(edge(Position::TopLeft), (ScreenEdge::Top, Align::Start));
+        assert_eq!(
+            edge(Position::BottomRight),
+            (ScreenEdge::Bottom, Align::End)
+        );
     }
 
     fn note(id: u32, default: bool) -> Note {
@@ -599,7 +772,13 @@ mod tests {
         ui.notes.push(note(7, true));
         ui.activate(7);
         let out: Vec<Out> = rx.try_iter().collect();
-        assert_eq!(out, vec![Out::Action(7, "default".into(), None), Out::Closed(7, Reason::Dismissed)]);
+        assert_eq!(
+            out,
+            vec![
+                Out::Action(7, "default".into(), None),
+                Out::Closed(7, Reason::Dismissed)
+            ]
+        );
     }
 
     #[test]
@@ -608,7 +787,13 @@ mod tests {
         ui.notes.push(note(7, true));
         ui.invoke(7, "reply");
         let out: Vec<Out> = rx.try_iter().collect();
-        assert_eq!(out, vec![Out::Action(7, "reply".into(), None), Out::Closed(7, Reason::Dismissed)]);
+        assert_eq!(
+            out,
+            vec![
+                Out::Action(7, "reply".into(), None),
+                Out::Closed(7, Reason::Dismissed)
+            ]
+        );
     }
 
     #[test]
@@ -628,7 +813,10 @@ mod tests {
         ui.notes.push(crate::welcome::note());
         ui.invoke(crate::welcome::ID, "open-settings");
         let out: Vec<Out> = rx.try_iter().collect();
-        assert_eq!(out, vec![Out::Closed(crate::welcome::ID, Reason::Dismissed)]);
+        assert_eq!(
+            out,
+            vec![Out::Closed(crate::welcome::ID, Reason::Dismissed)]
+        );
     }
 
     #[test]
@@ -651,11 +839,23 @@ mod tests {
         assert!(ui.activate_newest(None));
         assert!(!ui.activate_newest(None));
         let out: Vec<Out> = rx.try_iter().collect();
-        assert_eq!(out, vec![Out::Closed(8, Reason::Dismissed), Out::Action(7, "default".into(), None), Out::Closed(7, Reason::Dismissed)]);
+        assert_eq!(
+            out,
+            vec![
+                Out::Closed(8, Reason::Dismissed),
+                Out::Action(7, "default".into(), None),
+                Out::Closed(7, Reason::Dismissed)
+            ]
+        );
     }
 
     fn volume(id: u32, value: f32) -> Note {
-        let mut n = Note::new(id, "pamixer", format!("Volume [{}%]", (value * 100.0) as u32), "");
+        let mut n = Note::new(
+            id,
+            "pamixer",
+            format!("Volume [{}%]", (value * 100.0) as u32),
+            "",
+        );
         n.value = Some(value);
         n.tag = Some("volume".into());
         n
@@ -667,9 +867,13 @@ mod tests {
         ui.upsert(volume(1, 0.4));
         ui.upsert(Note::new(2, "Slack", "Dax", "ship it"));
         ui.upsert(volume(3, 0.45));
-        let notes: Vec<(u32, u32, Option<f32>)> = ui.notes.iter().map(|n| (n.id, n.slot, n.value)).collect();
+        let notes: Vec<(u32, u32, Option<f32>)> =
+            ui.notes.iter().map(|n| (n.id, n.slot, n.value)).collect();
         assert_eq!(notes, vec![(2, 2, None), (3, 1, Some(0.45))]);
-        assert_eq!(rx.try_iter().collect::<Vec<_>>(), vec![Out::Closed(1, Reason::Closed)]);
+        assert_eq!(
+            rx.try_iter().collect::<Vec<_>>(),
+            vec![Out::Closed(1, Reason::Closed)]
+        );
     }
 
     #[test]

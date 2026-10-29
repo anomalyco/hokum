@@ -18,7 +18,10 @@ pub struct Config {
 }
 
 pub fn load() -> Config {
-    Config { loaded: crate::config::load(), script: std::fs::read_to_string(crate::script::path()).ok() }
+    Config {
+        loaded: crate::config::load(),
+        script: std::fs::read_to_string(crate::script::path()).ok(),
+    }
 }
 
 fn stamp(p: &PathBuf) -> Option<SystemTime> {
@@ -26,7 +29,11 @@ fn stamp(p: &PathBuf) -> Option<SystemTime> {
 }
 
 fn fingerprint(base: &str) -> Vec<Option<SystemTime>> {
-    let mut v = vec![stamp(&crate::config::path()), stamp(&crate::script::path()), stamp(&crate::theme::dir())];
+    let mut v = vec![
+        stamp(&crate::config::path()),
+        stamp(&crate::script::path()),
+        stamp(&crate::theme::dir()),
+    ];
     if let Some(crate::theme::Found::File(p)) = crate::theme::find(base) {
         v.push(stamp(&p));
     }

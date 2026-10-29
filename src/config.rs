@@ -70,7 +70,10 @@ fn load_src(src: &str) -> Loaded {
     let base = match crate::theme::resolve(&base_id) {
         Ok(t) => t,
         Err(p) => {
-            problems.extend(p.into_iter().map(|p| Problem { line: p.line, message: format!("theme `{base_id}`: {}", p.message) }));
+            problems.extend(p.into_iter().map(|p| Problem {
+                line: p.line,
+                message: format!("theme `{base_id}`: {}", p.message),
+            }));
             crate::theme::resolve("capsule").unwrap_or_else(|_| Theme::empty())
         }
     };
@@ -80,7 +83,15 @@ fn load_src(src: &str) -> Loaded {
     problems.extend(crate::theme::missing_templates(&own.rules, &theme));
     let behaviour = own.behaviour();
     let modules = own.modules;
-    Loaded { base_id, base, own, theme, behaviour, modules, problems }
+    Loaded {
+        base_id,
+        base,
+        own,
+        theme,
+        behaviour,
+        modules,
+        problems,
+    }
 }
 
 /// `hokum check [path]`: loads the config (or `path`, a config or theme file) the way the
@@ -89,32 +100,74 @@ pub fn check(file: Option<&str>) -> bool {
     let (shown, problems, what) = match file {
         None => {
             let l = load();
-            let mut problems: Vec<(String, Problem)> = l.problems.into_iter().map(|p| (path().display().to_string(), p)).collect();
+            let mut problems: Vec<(String, Problem)> = l
+                .problems
+                .into_iter()
+                .map(|p| (path().display().to_string(), p))
+                .collect();
             let script = crate::script::path();
             if let Ok(src) = std::fs::read_to_string(&script)
                 && let Err(e) = crate::script::Script::compile(&src)
             {
-                problems.push((script.display().to_string(), Problem { line: 0, message: e }));
+                problems.push((
+                    script.display().to_string(),
+                    Problem {
+                        line: 0,
+                        message: e,
+                    },
+                ));
             }
-            (path().display().to_string(), problems, format!("theme \"{}\"", l.base_id))
+            (
+                path().display().to_string(),
+                problems,
+                format!("theme \"{}\"", l.base_id),
+            )
         }
-        Some(f) if std::path::Path::new(f).file_name().is_some_and(|n| n == "config.kdl") => match std::fs::read_to_string(f) {
-            Ok(src) => {
-                let l = load_src(&src);
-                (f.to_owned(), l.problems.into_iter().map(|p| (f.to_owned(), p)).collect(), format!("theme \"{}\"", l.base_id))
+        Some(f)
+            if std::path::Path::new(f)
+                .file_name()
+                .is_some_and(|n| n == "config.kdl") =>
+        {
+            match std::fs::read_to_string(f) {
+                Ok(src) => {
+                    let l = load_src(&src);
+                    (
+                        f.to_owned(),
+                        l.problems.into_iter().map(|p| (f.to_owned(), p)).collect(),
+                        format!("theme \"{}\"", l.base_id),
+                    )
+                }
+                Err(e) => (
+                    f.to_owned(),
+                    vec![(
+                        f.to_owned(),
+                        Problem {
+                            line: 0,
+                            message: e.to_string(),
+                        },
+                    )],
+                    String::new(),
+                ),
             }
-            Err(e) => (f.to_owned(), vec![(f.to_owned(), Problem { line: 0, message: e.to_string() })], String::new()),
-        },
+        }
         Some(f) => {
             let abs = std::path::absolute(f).unwrap_or_else(|_| f.into());
             match crate::theme::resolve(&abs.to_string_lossy()) {
                 Ok(t) => (f.to_owned(), Vec::new(), format!("theme \"{}\"", t.name)),
-                Err(p) => (f.to_owned(), p.into_iter().map(|p| (f.to_owned(), p)).collect(), String::new()),
+                Err(p) => (
+                    f.to_owned(),
+                    p.into_iter().map(|p| (f.to_owned(), p)).collect(),
+                    String::new(),
+                ),
             }
         }
     };
     for (file, p) in &problems {
-        if p.line == 0 { eprintln!("{file}: {}", p.message) } else { eprintln!("{file}: {p}") }
+        if p.line == 0 {
+            eprintln!("{file}: {}", p.message)
+        } else {
+            eprintln!("{file}: {p}")
+        }
     }
     if problems.is_empty() {
         println!("{shown}: OK ({what})");
@@ -126,9 +179,15 @@ pub fn check(file: Option<&str>) -> bool {
 fn migrate() -> Option<String> {
     let old = crate::style::dir().join("settings.json");
     let legacy: Legacy = serde_json::from_str(&std::fs::read_to_string(&old).ok()?).ok()?;
-    let mut e = Edit { doc: DEFAULT.parse().ok()? };
+    let mut e = Edit {
+        doc: DEFAULT.parse().ok()?,
+    };
     let base = match legacy.theme.as_deref().filter(|t| !t.is_empty()) {
-        Some(t) => std::path::Path::new(t).file_stem().and_then(|s| s.to_str()).unwrap_or("soft").to_owned(),
+        Some(t) => std::path::Path::new(t)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("soft")
+            .to_owned(),
         None => "soft".into(),
     };
     e.set_theme(&base);
@@ -136,7 +195,14 @@ fn migrate() -> Option<String> {
         e.set_behaviour("position", Value::Text(p.word().into()));
     }
     if let Some(l) = legacy.linger.as_deref() {
-        e.set_behaviour("stay", Value::Number(match l { "short" => 4.0, "long" => 10.0, _ => 6.0 }));
+        e.set_behaviour(
+            "stay",
+            Value::Number(match l {
+                "short" => 4.0,
+                "long" => 10.0,
+                _ => 6.0,
+            }),
+        );
     }
     if let Some(n) = legacy.max_shown {
         e.set_behaviour("show-at-most", Value::Number(n as f64));
@@ -178,7 +244,10 @@ fn legacy_style(e: &mut Edit, s: LegacyStyle, soft: &Tokens) {
     if soft.mark != s.mark {
         e.set_token("mark", &[Value::Text(s.mark.word().into())]);
     }
-    let same_depth = matches!((soft.shadow, s.depth), (Lift::Flat, Depth::Flat) | (Lift::Soft, Depth::Soft) | (Lift::Deep, Depth::Deep));
+    let same_depth = matches!(
+        (soft.shadow, s.depth),
+        (Lift::Flat, Depth::Flat) | (Lift::Soft, Depth::Soft) | (Lift::Deep, Depth::Deep)
+    );
     if !same_depth {
         e.set_token("shadow", &[Value::Text(s.depth.word().into())]);
     }
@@ -221,10 +290,13 @@ impl Value {
 
     fn entry(&self) -> KdlEntry {
         let mut e = KdlEntry::new(self.kdl());
-        e.set_format(KdlEntryFormat { value_repr: self.repr(), leading: " ".into(), ..Default::default() });
+        e.set_format(KdlEntryFormat {
+            value_repr: self.repr(),
+            leading: " ".into(),
+            ..Default::default()
+        });
         e
     }
-
 }
 
 /// Changes the config file without disturbing what it doesn't change.
@@ -233,11 +305,17 @@ pub struct Edit {
 }
 
 fn args(node: &KdlNode) -> impl Iterator<Item = &KdlValue> {
-    node.entries().iter().filter(|e| e.name().is_none()).map(|e| e.value())
+    node.entries()
+        .iter()
+        .filter(|e| e.name().is_none())
+        .map(|e| e.value())
 }
 
 fn props(node: &KdlNode) -> Vec<(&str, &KdlValue)> {
-    node.entries().iter().filter_map(|e| Some((e.name()?.value(), e.value()))).collect()
+    node.entries()
+        .iter()
+        .filter_map(|e| Some((e.name()?.value(), e.value())))
+        .collect()
 }
 
 /// The indentation of a block's children, from the first one (four spaces when empty).
@@ -269,7 +347,11 @@ fn push_child(block: &mut KdlDocument, mut node: KdlNode) {
                 f.terminator = "\n".into();
             }
         }
-        None => node.set_format(KdlNodeFormat { leading, terminator: "\n".into(), ..Default::default() }),
+        None => node.set_format(KdlNodeFormat {
+            leading,
+            terminator: "\n".into(),
+            ..Default::default()
+        }),
     }
     block.nodes_mut().push(node);
 }
@@ -291,7 +373,9 @@ impl Edit {
     /// rather than overwrite what someone is in the middle of writing.
     pub fn open() -> Result<Edit, String> {
         let src = text();
-        src.parse::<KdlDocument>().map(|doc| Edit { doc }).map_err(|e| format!("config.kdl doesn't parse yet ({e}); fix it and try again"))
+        src.parse::<KdlDocument>()
+            .map(|doc| Edit { doc })
+            .map_err(|e| format!("config.kdl doesn't parse yet ({e}); fix it and try again"))
     }
 
     pub fn save(&self) -> std::io::Result<()> {
@@ -316,14 +400,22 @@ impl Edit {
     /// The top-level `theme "…"`, set or added.
     pub fn set_theme(&mut self, id: &str) {
         let v = Value::Text(id.into());
-        if let Some(node) = self.doc.nodes_mut().iter_mut().find(|n| n.name().value() == "theme") {
+        if let Some(node) = self
+            .doc
+            .nodes_mut()
+            .iter_mut()
+            .find(|n| n.name().value() == "theme")
+        {
             node.entries_mut().clear();
             node.push(v.entry());
             return;
         }
         let mut node = KdlNode::new("theme");
         node.push(v.entry());
-        node.set_format(KdlNodeFormat { terminator: "\n".into(), ..Default::default() });
+        node.set_format(KdlNodeFormat {
+            terminator: "\n".into(),
+            ..Default::default()
+        });
         // After the leading comments, before everything else.
         let at = self.doc.nodes().iter().position(|_| true).unwrap_or(0);
         self.doc.nodes_mut().insert(at, node);
@@ -332,7 +424,11 @@ impl Edit {
     /// The top-level block `name` with no arguments (`tokens`, not `tokens "dark"`), added at
     /// the end when missing.
     fn block(&mut self, name: &str) -> &mut KdlDocument {
-        let found = self.doc.nodes().iter().position(|n| n.name().value() == name && args(n).next().is_none());
+        let found = self
+            .doc
+            .nodes()
+            .iter()
+            .position(|n| n.name().value() == name && args(n).next().is_none());
         let i = match found {
             Some(i) => i,
             None => {
@@ -355,7 +451,11 @@ impl Edit {
     }
 
     fn set_in(block: &mut KdlDocument, key: &str, values: &[Value]) {
-        if let Some(node) = block.nodes_mut().iter_mut().find(|n| n.name().value() == key) {
+        if let Some(node) = block
+            .nodes_mut()
+            .iter_mut()
+            .find(|n| n.name().value() == key)
+        {
             node.entries_mut().clear();
             for v in values {
                 node.push(v.entry());
@@ -380,15 +480,30 @@ impl Edit {
                 && lead.contains('\n')
                 && !f.leading.contains('\n')
             {
-                let breaks: String = lead.chars().take_while(|c| c.is_whitespace() && *c != ' ' && *c != '\t').collect();
-                f.leading = format!("{}{}", if breaks.is_empty() { "\n".into() } else { breaks }, f.leading);
+                let breaks: String = lead
+                    .chars()
+                    .take_while(|c| c.is_whitespace() && *c != ' ' && *c != '\t')
+                    .collect();
+                f.leading = format!(
+                    "{}{}",
+                    if breaks.is_empty() {
+                        "\n".into()
+                    } else {
+                        breaks
+                    },
+                    f.leading
+                );
             }
         }
     }
 
     /// Drops a top-level block left empty.
     fn prune(&mut self, name: &str) {
-        self.doc.nodes_mut().retain(|n| !(n.name().value() == name && args(n).next().is_none() && n.children().is_some_and(|c| c.nodes().is_empty())));
+        self.doc.nodes_mut().retain(|n| {
+            !(n.name().value() == name
+                && args(n).next().is_none()
+                && n.children().is_some_and(|c| c.nodes().is_empty()))
+        });
     }
 
     pub fn set_token(&mut self, key: &str, values: &[Value]) {
@@ -400,7 +515,12 @@ impl Edit {
     }
 
     pub fn remove_behaviour(&mut self, key: &str) {
-        if self.doc.nodes().iter().any(|n| n.name().value() == "behaviour") {
+        if self
+            .doc
+            .nodes()
+            .iter()
+            .any(|n| n.name().value() == "behaviour")
+        {
             Self::remove_in(self.block("behaviour"), key);
             self.prune("behaviour");
         }
@@ -409,7 +529,12 @@ impl Edit {
     /// `modules { <key> #false }`, or no line when it's on (the default); an empty block goes.
     pub fn set_module(&mut self, key: &str, on: bool) {
         if on {
-            if self.doc.nodes().iter().any(|n| n.name().value() == "modules") {
+            if self
+                .doc
+                .nodes()
+                .iter()
+                .any(|n| n.name().value() == "modules")
+            {
                 Self::remove_in(self.block("modules"), key);
                 self.prune("modules");
             }
@@ -420,12 +545,19 @@ impl Edit {
 
     /// The `rule app="…"` the settings window manages for `app`: one matcher, `app`, exactly.
     fn app_rule(&mut self, app: &str, create: bool) -> Option<&mut KdlNode> {
-        let i = self.doc.nodes().iter().position(|n| n.name().value() == "rule" && is_app_rule(n, app));
+        let i = self
+            .doc
+            .nodes()
+            .iter()
+            .position(|n| n.name().value() == "rule" && is_app_rule(n, app));
         let i = match (i, create) {
             (Some(i), _) => i,
             (None, false) => return None,
             (None, true) => {
-                let mut node = snippet(&format!("rule app={} {{\n}}\n", Value::Text(app.into()).repr()));
+                let mut node = snippet(&format!(
+                    "rule app={} {{\n}}\n",
+                    Value::Text(app.into()).repr()
+                ));
                 if let Some(f) = node.format_mut() {
                     f.leading = "\n".into();
                 }
@@ -446,7 +578,9 @@ impl Edit {
     /// to do goes.
     pub fn set_app(&mut self, app: &str, action: &str, value: Option<Vec<Value>>) {
         let create = value.is_some();
-        let Some(rule) = self.app_rule(app, create) else { return };
+        let Some(rule) = self.app_rule(app, create) else {
+            return;
+        };
         let block = rule.ensure_children();
         match value {
             Some(v) => Self::set_in(block, action, &v),
@@ -458,13 +592,23 @@ impl Edit {
     /// Drops `app`'s rule when it has nothing left to do.
     fn tidy(&mut self, app: &str) {
         let app = app.to_owned();
-        self.doc.nodes_mut().retain(|n| !(n.name().value() == "rule" && is_app_rule(n, &app) && n.children().is_none_or(|c| c.nodes().is_empty())));
+        self.doc.nodes_mut().retain(|n| {
+            !(n.name().value() == "rule"
+                && is_app_rule(n, &app)
+                && n.children().is_none_or(|c| c.nodes().is_empty()))
+        });
     }
 }
 
 fn is_app_rule(n: &KdlNode, app: &str) -> bool {
     let p = props(n);
-    args(n).next().is_none() && p.len() == 1 && p[0].0 == "app" && p[0].1.as_string().is_some_and(|a| a.eq_ignore_ascii_case(app))
+    args(n).next().is_none()
+        && p.len() == 1
+        && p[0].0 == "app"
+        && p[0]
+            .1
+            .as_string()
+            .is_some_and(|a| a.eq_ignore_ascii_case(app))
 }
 
 /// What the settings window shows for an app, from the config's rule for it.
@@ -479,7 +623,8 @@ pub struct AppRule {
 /// Whether a rule is one the settings window manages: it matches one app by its exact name.
 pub fn simple_app(r: &Rule) -> Option<&str> {
     let app = r.app.as_deref()?;
-    (r.summary.is_none() && r.body.is_none() && r.urgency.is_none() && !app.contains('*')).then_some(app)
+    (r.summary.is_none() && r.body.is_none() && r.urgency.is_none() && !app.contains('*'))
+        .then_some(app)
 }
 
 /// The settings window's view of `own`'s rules: per app, and how many it can't show.
@@ -512,7 +657,9 @@ mod tests {
     use super::*;
 
     fn edit(src: &str) -> Edit {
-        Edit { doc: src.parse().unwrap() }
+        Edit {
+            doc: src.parse().unwrap(),
+        }
     }
 
     #[test]
@@ -526,7 +673,9 @@ mod tests {
 
     #[test]
     fn edits_keep_comments_and_order() {
-        let mut e = edit("// mine\ntheme \"signal\" // base\n\ntokens {\n    radius 10 // rounder\n}\n\nbehaviour {\n    stay 10 // longer\n    position \"top-left\"\n}\n");
+        let mut e = edit(
+            "// mine\ntheme \"signal\" // base\n\ntokens {\n    radius 10 // rounder\n}\n\nbehaviour {\n    stay 10 // longer\n    position \"top-left\"\n}\n",
+        );
         e.set_theme("soft");
         e.set_behaviour("stay", Value::Number(4.0));
         e.set_behaviour("show-at-most", Value::Number(3.0));
@@ -535,11 +684,24 @@ mod tests {
             "// mine\ntheme \"soft\" // base\n\ntokens {\n    radius 10 // rounder\n}\n\nbehaviour {\n    stay 4 // longer\n    position \"top-left\"\n    show-at-most 3\n}\n"
         );
         e.remove_behaviour("stay");
-        assert!(e.text().contains("behaviour {\n    position \"top-left\"\n"), "the next key keeps its own line: {}", e.text());
+        assert!(
+            e.text()
+                .contains("behaviour {\n    position \"top-left\"\n"),
+            "the next key keeps its own line: {}",
+            e.text()
+        );
         e.remove_behaviour("position");
         e.remove_behaviour("show-at-most");
-        assert!(!e.text().contains("behaviour"), "an empty block goes: {}", e.text());
-        assert!(e.text().contains("radius 10 // rounder"), "tokens are the file's: {}", e.text());
+        assert!(
+            !e.text().contains("behaviour"),
+            "an empty block goes: {}",
+            e.text()
+        );
+        assert!(
+            e.text().contains("radius 10 // rounder"),
+            "tokens are the file's: {}",
+            e.text()
+        );
         crate::theme::parse_config(&e.text()).unwrap();
     }
 
@@ -549,11 +711,20 @@ mod tests {
         e.set_app("Spotify", "hide", Some(vec![]));
         e.set_app("Slack", "timeout", Some(vec![Value::Number(3.0)]));
         e.set_app("Slack", "interrupt", Some(vec![]));
-        assert!(e.text().contains("rule app=\"Slack\" {\n    timeout 3\n    interrupt\n}"), "new rules read like hand-written ones:\n{}", e.text());
-        let t = crate::theme::parse_config(&e.text()).unwrap_or_else(|p| panic!("{p:?}\n{}", e.text()));
+        assert!(
+            e.text()
+                .contains("rule app=\"Slack\" {\n    timeout 3\n    interrupt\n}"),
+            "new rules read like hand-written ones:\n{}",
+            e.text()
+        );
+        let t =
+            crate::theme::parse_config(&e.text()).unwrap_or_else(|p| panic!("{p:?}\n{}", e.text()));
         let (apps, custom) = app_rules(&t);
         assert_eq!(custom, 1, "the glob rule isn't the window's");
-        assert_eq!(apps.iter().map(|a| a.0.as_str()).collect::<Vec<_>>(), ["Spotify", "Slack"]);
+        assert_eq!(
+            apps.iter().map(|a| a.0.as_str()).collect::<Vec<_>>(),
+            ["Spotify", "Slack"]
+        );
         assert!(apps[0].1.hide && apps[1].1.stay == Some(3.0) && apps[1].1.interrupt);
         e.set_app("Spotify", "hide", None);
         e.set_app("Slack", "timeout", None);
@@ -568,24 +739,40 @@ mod tests {
         assert!(m.sound && m.bluetooth && !m.osd && !m.bluetooth_notifications);
         let mut e = edit("theme \"soft\"\n");
         e.set_module("bluetooth", false);
-        assert!(e.text().contains("modules {\n    bluetooth #false\n}"), "{}", e.text());
+        assert!(
+            e.text().contains("modules {\n    bluetooth #false\n}"),
+            "{}",
+            e.text()
+        );
         let l = load_src(&e.text());
-        assert!(l.ok() && l.modules.sound && !l.modules.bluetooth, "{:?}", l.problems);
+        assert!(
+            l.ok() && l.modules.sound && !l.modules.bluetooth,
+            "{:?}",
+            l.problems
+        );
         e.set_module("bluetooth", true);
         assert_eq!(e.text(), "theme \"soft\"\n");
         assert!(!load_src("modules { radio #true }\n").ok());
-        assert!(crate::theme::parse("modules { sound #false }\n", "t").is_err(), "themes don't set modules");
+        assert!(
+            crate::theme::parse("modules { sound #false }\n", "t").is_err(),
+            "themes don't set modules"
+        );
     }
 
     #[test]
     fn app_rules_keep_styling_written_by_hand() {
-        let src = "rule app=\"Slack\" {\n    tokens { accent \"#d38be0\" }\n    template \"card\"\n}\n";
+        let src =
+            "rule app=\"Slack\" {\n    tokens { accent \"#d38be0\" }\n    template \"card\"\n}\n";
         let mut e = edit(src);
         e.set_app("Slack", "timeout", Some(vec![Value::Number(3.0)]));
         e.set_app("Slack", "timeout", None);
         assert_eq!(e.text(), src);
         e.set_app("Slack", "hide", Some(vec![]));
         let t = crate::theme::parse_config(&e.text()).unwrap();
-        assert!(t.rules[0].hide && t.rules[0].template.as_deref() == Some("card") && t.rules[0].tokens != Default::default());
+        assert!(
+            t.rules[0].hide
+                && t.rules[0].template.as_deref() == Some("card")
+                && t.rules[0].tokens != Default::default()
+        );
     }
 }

@@ -68,8 +68,29 @@ pub enum Font {
 }
 
 const NAMES: &[&str] = &[
-    "layer", "layer-2", "layer-3", "page", "base", "deep", "text", "muted", "faint", "border", "border-strong", "hover",
-    "accent", "accent-deep", "accent-deeper", "app", "danger", "warning", "success", "info", "white", "black", "transparent",
+    "layer",
+    "layer-2",
+    "layer-3",
+    "page",
+    "base",
+    "deep",
+    "text",
+    "muted",
+    "faint",
+    "border",
+    "border-strong",
+    "hover",
+    "accent",
+    "accent-deep",
+    "accent-deeper",
+    "app",
+    "danger",
+    "warning",
+    "success",
+    "info",
+    "white",
+    "black",
+    "transparent",
 ];
 
 impl Paint {
@@ -108,7 +129,11 @@ impl Paint {
                     "black" => Color::BLACK,
                     _ => Color::TRANSPARENT,
                 };
-                if *a < 1.0 { base.alpha(base.a * a) } else { base }
+                if *a < 1.0 {
+                    base.alpha(base.a * a)
+                } else {
+                    base
+                }
             }
         }
     }
@@ -127,7 +152,12 @@ pub fn deep(c: Color, extra: f32) -> Color {
     let (s, co) = hue.to_radians().sin_cos();
     let at = |l: f32| {
         let c = Color::from_oklab([l, chroma * co, chroma * s, alpha]);
-        Color { r: c.r.clamp(0.0, 1.0), g: c.g.clamp(0.0, 1.0), b: c.b.clamp(0.0, 1.0), a: alpha }
+        Color {
+            r: c.r.clamp(0.0, 1.0),
+            g: c.g.clamp(0.0, 1.0),
+            b: c.b.clamp(0.0, 1.0),
+            a: alpha,
+        }
     };
     let luminance = |c: Color| 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
     let mut l = l.min(0.62);
@@ -233,7 +263,28 @@ impl Overrides {
         macro_rules! set {
             ($($f:ident),*) => { $(if let Some(v) = &self.$f { t.$f = v.clone(); })* };
         }
-        set!(width, radius, padding, gap, spacing, badge_radius, icon_size, font_size, title_weight, font, fill, text, muted, faint, border, accent, shadow, mark, enter, motion);
+        set!(
+            width,
+            radius,
+            padding,
+            gap,
+            spacing,
+            badge_radius,
+            icon_size,
+            font_size,
+            title_weight,
+            font,
+            fill,
+            text,
+            muted,
+            faint,
+            border,
+            accent,
+            shadow,
+            mark,
+            enter,
+            motion
+        );
     }
 
     /// `top`'s values over these.
@@ -241,7 +292,28 @@ impl Overrides {
         macro_rules! set {
             ($($f:ident),*) => { $(if top.$f.is_some() { self.$f = top.$f.clone(); })* };
         }
-        set!(width, radius, padding, gap, spacing, badge_radius, icon_size, font_size, title_weight, font, fill, text, muted, faint, border, accent, shadow, mark, enter, motion);
+        set!(
+            width,
+            radius,
+            padding,
+            gap,
+            spacing,
+            badge_radius,
+            icon_size,
+            font_size,
+            title_weight,
+            font,
+            fill,
+            text,
+            muted,
+            faint,
+            border,
+            accent,
+            shadow,
+            mark,
+            enter,
+            motion
+        );
     }
 }
 
@@ -255,7 +327,9 @@ pub enum Part {
     Field(String, Vec<String>),
 }
 
-pub const FIELDS: &[&str] = &["app", "source", "context", "summary", "body", "time", "urgency", "value", "id"];
+pub const FIELDS: &[&str] = &[
+    "app", "source", "context", "summary", "body", "time", "urgency", "value", "id",
+];
 const FILTERS: &[&str] = &["upper", "lower", "initial", "trim"];
 
 impl Interp {
@@ -285,11 +359,17 @@ impl Interp {
                     let mut bits = hole.split('|').map(str::trim);
                     let field = bits.next().unwrap_or_default().to_owned();
                     if !FIELDS.contains(&field.as_str()) {
-                        return Err(format!("unknown field `{field}`; fields are {}", FIELDS.join(", ")));
+                        return Err(format!(
+                            "unknown field `{field}`; fields are {}",
+                            FIELDS.join(", ")
+                        ));
                     }
                     let filters: Vec<String> = bits.map(str::to_owned).collect();
                     if let Some(f) = filters.iter().find(|f| !FILTERS.contains(&f.as_str())) {
-                        return Err(format!("unknown filter `{f}`; filters are {}", FILTERS.join(", ")));
+                        return Err(format!(
+                            "unknown filter `{f}`; filters are {}",
+                            FILTERS.join(", ")
+                        ));
                     }
                     if !text.is_empty() {
                         parts.push(Part::Text(std::mem::take(&mut text)));
@@ -316,7 +396,11 @@ impl Interp {
                         v = match filter.as_str() {
                             "upper" => v.to_uppercase(),
                             "lower" => v.to_lowercase(),
-                            "initial" => v.chars().find(|c| c.is_alphanumeric()).map(|c| c.to_uppercase().collect()).unwrap_or_default(),
+                            "initial" => v
+                                .chars()
+                                .find(|c| c.is_alphanumeric())
+                                .map(|c| c.to_uppercase().collect())
+                                .unwrap_or_default(),
                             "trim" => v.trim().to_owned(),
                             _ => v,
                         };
@@ -341,7 +425,10 @@ pub fn field(n: &Note, name: &str) -> String {
         "body" => n.body.clone(),
         "time" => n.time.clone(),
         "urgency" => ["low", "normal", "critical"][n.urgency.min(2) as usize].to_owned(),
-        "value" => n.value.map(|v| format!("{}%", (v * 100.0).round())).unwrap_or_default(),
+        "value" => n
+            .value
+            .map(|v| format!("{}%", (v * 100.0).round()))
+            .unwrap_or_default(),
         "id" => n.id.to_string(),
         _ => String::new(),
     }
@@ -400,19 +487,42 @@ pub enum Cond {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Node {
-    Box { row: bool, props: Props, children: Vec<Node> },
-    Text { text: Interp, props: Props },
+    Box {
+        row: bool,
+        props: Props,
+        children: Vec<Node>,
+    },
+    Text {
+        text: Interp,
+        props: Props,
+    },
     /// The theme's app mark (letter, icon, dot).
-    Badge { props: Props },
+    Badge {
+        props: Props,
+    },
     /// The app's icon, or its letter when it has none.
-    Icon { props: Props },
+    Icon {
+        props: Props,
+    },
     /// The notification's own picture (an avatar, a thumbnail); nothing when it has none.
-    Image { props: Props },
-    Progress { props: Props },
-    Actions { props: Props },
-    Close { props: Props },
+    Image {
+        props: Props,
+    },
+    Progress {
+        props: Props,
+    },
+    Actions {
+        props: Props,
+    },
+    Close {
+        props: Props,
+    },
     Spacer,
-    If { cond: Cond, then: Vec<Node>, otherwise: Vec<Node> },
+    If {
+        cond: Cond,
+        then: Vec<Node>,
+        otherwise: Vec<Node>,
+    },
 }
 
 /// Matches notifications by app, text and urgency; then picks a template, changes tokens,
@@ -455,12 +565,16 @@ pub fn glob(pattern: &str, text: &str) -> bool {
             continue;
         }
         if i == 0 {
-            let Some(r) = rest.strip_prefix(part) else { return false };
+            let Some(r) = rest.strip_prefix(part) else {
+                return false;
+            };
             rest = r;
         } else if i == parts.len() - 1 {
             return rest.ends_with(part);
         } else {
-            let Some(at) = rest.find(part) else { return false };
+            let Some(at) = rest.find(part) else {
+                return false;
+            };
             rest = &rest[at + part.len()..];
         }
     }
@@ -508,7 +622,15 @@ impl Behave {
         macro_rules! set {
             ($($f:ident),*) => { $(if top.$f.is_some() { self.$f = top.$f; })* };
         }
-        set!(position, appearance, stay, show_at_most, pause_on_hover, do_not_disturb, check_for_updates);
+        set!(
+            position,
+            appearance,
+            stay,
+            show_at_most,
+            pause_on_hover,
+            do_not_disturb,
+            check_for_updates
+        );
     }
 }
 
@@ -526,7 +648,12 @@ pub struct Modules {
 
 impl Default for Modules {
     fn default() -> Self {
-        Modules { sound: true, bluetooth: true, osd: true, bluetooth_notifications: true }
+        Modules {
+            sound: true,
+            bluetooth: true,
+            osd: true,
+            bluetooth_notifications: true,
+        }
     }
 }
 
@@ -567,7 +694,11 @@ pub struct Look {
 
 fn default_templates() -> &'static HashMap<String, Arc<Vec<Node>>> {
     static T: OnceLock<HashMap<String, Arc<Vec<Node>>>> = OnceLock::new();
-    T.get_or_init(|| parse(DEFAULT, "default").map(|t| t.templates).unwrap_or_else(|e| panic!("default.kdl: {}", e[0])))
+    T.get_or_init(|| {
+        parse(DEFAULT, "default")
+            .map(|t| t.templates)
+            .unwrap_or_else(|e| panic!("default.kdl: {}", e[0]))
+    })
 }
 
 impl Theme {
@@ -595,7 +726,8 @@ impl Theme {
         t.dark.merge(&top.dark);
         t.light.merge(&top.light);
         t.behave.merge(&top.behave);
-        t.templates.extend(top.templates.iter().map(|(k, v)| (k.clone(), v.clone())));
+        t.templates
+            .extend(top.templates.iter().map(|(k, v)| (k.clone(), v.clone())));
         t.rules.extend(top.rules.iter().cloned());
         t
     }
@@ -621,7 +753,11 @@ impl Theme {
     pub fn base(&self, dark: bool) -> Tokens {
         let mut t = Tokens::default();
         self.tokens.apply(&mut t);
-        if dark { self.dark.apply(&mut t) } else { self.light.apply(&mut t) }
+        if dark {
+            self.dark.apply(&mut t)
+        } else {
+            self.light.apply(&mut t)
+        }
         t
     }
 
@@ -647,7 +783,10 @@ impl Theme {
                 template = t.clone();
             }
         }
-        Look { tokens, template: self.template(&template) }
+        Look {
+            tokens,
+            template: self.template(&template),
+        }
     }
 
     /// What the rules say about `n`: hide it, how long it stays, whether it breaks through
@@ -696,15 +835,25 @@ impl Parser<'_> {
 
     fn problem(&mut self, node: &KdlNode, message: impl Into<String>) {
         let line = self.line(node.span().offset());
-        self.problems.push(Problem { line, message: message.into() });
+        self.problems.push(Problem {
+            line,
+            message: message.into(),
+        });
     }
 
     fn args<'n>(&self, node: &'n KdlNode) -> Vec<&'n KdlValue> {
-        node.entries().iter().filter(|e| e.name().is_none()).map(|e| e.value()).collect()
+        node.entries()
+            .iter()
+            .filter(|e| e.name().is_none())
+            .map(|e| e.value())
+            .collect()
     }
 
     fn props<'n>(&self, node: &'n KdlNode) -> Vec<(&'n str, &'n KdlValue)> {
-        node.entries().iter().filter_map(|e| Some((e.name()?.value(), e.value()))).collect()
+        node.entries()
+            .iter()
+            .filter_map(|e| Some((e.name()?.value(), e.value())))
+            .collect()
     }
 
     fn children<'n>(&self, node: &'n KdlNode) -> &'n [KdlNode] {
@@ -712,9 +861,15 @@ impl Parser<'_> {
     }
 
     fn num(&mut self, node: &KdlNode, v: &KdlValue) -> Option<f32> {
-        let n = v.as_float().or_else(|| v.as_integer().map(|i| i as f64)).map(|f| f as f32);
+        let n = v
+            .as_float()
+            .or_else(|| v.as_integer().map(|i| i as f64))
+            .map(|f| f as f32);
         if n.is_none() {
-            self.problem(node, format!("`{}` wants a number, not {v}", node.name().value()));
+            self.problem(
+                node,
+                format!("`{}` wants a number, not {v}", node.name().value()),
+            );
         }
         n
     }
@@ -722,7 +877,10 @@ impl Parser<'_> {
     fn string<'v>(&mut self, node: &KdlNode, v: &'v KdlValue) -> Option<&'v str> {
         let s = v.as_string();
         if s.is_none() {
-            self.problem(node, format!("`{}` wants a string, not {v}", node.name().value()));
+            self.problem(
+                node,
+                format!("`{}` wants a string, not {v}", node.name().value()),
+            );
         }
         s
     }
@@ -732,7 +890,10 @@ impl Parser<'_> {
         if s.starts_with('#') {
             let c = rune::color::hex(s);
             if c.is_none() {
-                self.problem(node, format!("`{s}` isn't a colour; use #rgb, #rrggbb or #rrggbbaa"));
+                self.problem(
+                    node,
+                    format!("`{s}` isn't a colour; use #rgb, #rrggbb or #rrggbbaa"),
+                );
             }
             return c.map(Paint::Literal);
         }
@@ -740,14 +901,23 @@ impl Parser<'_> {
             Some((n, a)) => match a.trim().parse::<f32>() {
                 Ok(a) => (n.trim(), (a / 100.0).clamp(0.0, 1.0)),
                 Err(_) => {
-                    self.problem(node, format!("`{s}`: the opacity after `/` is a percentage, like `muted/50`"));
+                    self.problem(
+                        node,
+                        format!("`{s}`: the opacity after `/` is a percentage, like `muted/50`"),
+                    );
                     return None;
                 }
             },
             None => (s, 1.0),
         };
         if !NAMES.contains(&name) {
-            self.problem(node, format!("unknown colour `{name}`; use #hex or one of {}", NAMES.join(", ")));
+            self.problem(
+                node,
+                format!(
+                    "unknown colour `{name}`; use #hex or one of {}",
+                    NAMES.join(", ")
+                ),
+            );
             return None;
         }
         Some(Paint::Named(name.into(), alpha))
@@ -756,9 +926,15 @@ impl Parser<'_> {
     fn fill(&mut self, node: &KdlNode, args: &[&KdlValue]) -> Option<Fill> {
         match args {
             [one] => self.paint(node, one).map(Fill::Solid),
-            [top, bottom] => Some(Fill::Gradient(self.paint(node, top)?, self.paint(node, bottom)?)),
+            [top, bottom] => Some(Fill::Gradient(
+                self.paint(node, top)?,
+                self.paint(node, bottom)?,
+            )),
             _ => {
-                self.problem(node, "`fill` takes a colour, or two for a top-to-bottom gradient");
+                self.problem(
+                    node,
+                    "`fill` takes a colour, or two for a top-to-bottom gradient",
+                );
                 None
             }
         }
@@ -777,12 +953,21 @@ impl Parser<'_> {
         }
     }
 
-    fn keyword<T: Copy>(&mut self, node: &KdlNode, v: &KdlValue, what: &str, options: &[(&str, T)]) -> Option<T> {
+    fn keyword<T: Copy>(
+        &mut self,
+        node: &KdlNode,
+        v: &KdlValue,
+        what: &str,
+        options: &[(&str, T)],
+    ) -> Option<T> {
         let s = self.string(node, v)?;
         let found = options.iter().find(|o| o.0 == s).map(|o| o.1);
         if found.is_none() {
             let names: Vec<&str> = options.iter().map(|o| o.0).collect();
-            self.problem(node, format!("unknown {what} `{s}`; use {}", names.join(", ")));
+            self.problem(
+                node,
+                format!("unknown {what} `{s}`; use {}", names.join(", ")),
+            );
         }
         found
     }
@@ -800,7 +985,11 @@ impl Parser<'_> {
             return Some(Timeout::Never);
         }
         let s = self.num(node, v)?;
-        Some(if s <= 0.0 { Timeout::Never } else { Timeout::After(Duration::from_secs_f32(s)) })
+        Some(if s <= 0.0 {
+            Timeout::Never
+        } else {
+            Timeout::After(Duration::from_secs_f32(s))
+        })
     }
 
     /// `tokens { radius 16; fill "layer" ... }`
@@ -832,7 +1021,9 @@ impl Parser<'_> {
                 "accent" => o.accent = self.paint(node, v),
                 "border" => {
                     o.border = match args.as_slice() {
-                        [v] if v.as_string() == Some("none") || v.as_integer() == Some(0) => Some(None),
+                        [v] if v.as_string() == Some("none") || v.as_integer() == Some(0) => {
+                            Some(None)
+                        }
                         [w, c] => self.num(node, w).zip(self.paint(node, c)).map(Some),
                         _ => {
                             self.problem(node, "`border` takes a width and a colour, or \"none\"");
@@ -841,23 +1032,51 @@ impl Parser<'_> {
                     }
                 }
                 "shadow" => {
-                    o.shadow = self.keyword(node, v, "shadow", &[("flat", Lift::Flat), ("soft", Lift::Soft), ("deep", Lift::Deep), ("glow", Lift::Glow)])
+                    o.shadow = self.keyword(
+                        node,
+                        v,
+                        "shadow",
+                        &[
+                            ("flat", Lift::Flat),
+                            ("soft", Lift::Soft),
+                            ("deep", Lift::Deep),
+                            ("glow", Lift::Glow),
+                        ],
+                    )
                 }
                 "mark" => {
                     o.mark = self.keyword(
                         node,
                         v,
                         "mark",
-                        &[("letter", Mark::Letter), ("icon", Mark::Icon), ("dot", Mark::Dot), ("stripe", Mark::Stripe), ("none", Mark::None)],
+                        &[
+                            ("letter", Mark::Letter),
+                            ("icon", Mark::Icon),
+                            ("dot", Mark::Dot),
+                            ("stripe", Mark::Stripe),
+                            ("none", Mark::None),
+                        ],
                     )
                 }
                 "enter" => {
-                    o.enter =
-                        self.keyword(node, v, "entrance", &[("slide", Enter::Slide), ("fade", Enter::Fade), ("scale", Enter::Scale), ("drop", Enter::Drop)])
+                    o.enter = self.keyword(
+                        node,
+                        v,
+                        "entrance",
+                        &[
+                            ("slide", Enter::Slide),
+                            ("fade", Enter::Fade),
+                            ("scale", Enter::Scale),
+                            ("drop", Enter::Drop),
+                        ],
+                    )
                 }
                 "motion" => match args.as_slice() {
                     [d, b] => o.motion = self.num(node, d).zip(self.num(node, b)),
-                    _ => self.problem(node, "`motion` takes a duration in seconds and a bounce (0 to 1)"),
+                    _ => self.problem(
+                        node,
+                        "`motion` takes a duration in seconds and a bounce (0 to 1)",
+                    ),
                 },
                 other => self.problem(node, format!("unknown token `{other}`")),
             }
@@ -876,23 +1095,16 @@ impl Parser<'_> {
             let flag = |p: &mut Self, v: &KdlValue| {
                 let f = v.as_bool();
                 if f.is_none() {
-                    p.problem(node, format!("`{}` is #true or #false", node.name().value()));
+                    p.problem(
+                        node,
+                        format!("`{}` is #true or #false", node.name().value()),
+                    );
                 }
                 f
             };
             match node.name().value() {
                 "position" => {
-                    b.position = self.keyword(
-                        node,
-                        v,
-                        "position",
-                        &[
-                            ("top-right", Position::TopRight),
-                            ("top-left", Position::TopLeft),
-                            ("bottom-right", Position::BottomRight),
-                            ("bottom-left", Position::BottomLeft),
-                        ],
-                    )
+                    b.position = self.keyword(node, v, "position", &Position::ALL.map(|p| (p.word(), p)))
                 }
                 "appearance" => {
                     b.appearance =
@@ -919,7 +1131,10 @@ impl Parser<'_> {
             let on = match self.args(node).first().and_then(|v| v.as_bool()) {
                 Some(b) => b,
                 None => {
-                    self.problem(node, format!("`{}` is #true or #false", node.name().value()));
+                    self.problem(
+                        node,
+                        format!("`{}` is #true or #false", node.name().value()),
+                    );
                     continue;
                 }
             };
@@ -973,17 +1188,35 @@ impl Parser<'_> {
                     }
                 }
                 "align" => {
-                    p.align = self.keyword(node, v, "alignment", &[("start", Align::Start), ("center", Align::Center), ("end", Align::End), ("stretch", Align::Stretch)])
+                    p.align = self.keyword(
+                        node,
+                        v,
+                        "alignment",
+                        &[
+                            ("start", Align::Start),
+                            ("center", Align::Center),
+                            ("end", Align::End),
+                            ("stretch", Align::Stretch),
+                        ],
+                    )
                 }
                 "justify" => {
                     p.justify = self.keyword(
                         node,
                         v,
                         "justification",
-                        &[("start", Justify::Start), ("center", Justify::Center), ("end", Justify::End), ("between", Justify::Between)],
+                        &[
+                            ("start", Justify::Start),
+                            ("center", Justify::Center),
+                            ("end", Justify::End),
+                            ("between", Justify::Between),
+                        ],
                     )
                 }
-                other => self.problem(node, format!("`{}` has no property `{other}`", node.name().value())),
+                other => self.problem(
+                    node,
+                    format!("`{}` has no property `{other}`", node.name().value()),
+                ),
             }
         }
         p
@@ -992,15 +1225,25 @@ impl Parser<'_> {
     fn cond(&mut self, node: &KdlNode) -> Option<Cond> {
         let mut conds = Vec::new();
         for v in self.args(node) {
-            let Some(s) = self.string(node, v) else { continue };
+            let Some(s) = self.string(node, v) else {
+                continue;
+            };
             if FIELDS.contains(&s) || ["icon", "image", "actions"].contains(&s) {
                 conds.push(Cond::Has(s.into()));
             } else {
-                self.problem(node, format!("`if \"{s}\"`: not a field; fields are {}, icon, image, actions", FIELDS.join(", ")));
+                self.problem(
+                    node,
+                    format!(
+                        "`if \"{s}\"`: not a field; fields are {}, icon, image, actions",
+                        FIELDS.join(", ")
+                    ),
+                );
             }
         }
         for (key, v) in self.props(node) {
-            let Some(s) = self.string(node, v) else { continue };
+            let Some(s) = self.string(node, v) else {
+                continue;
+            };
             match key {
                 "urgency" => match ["low", "normal", "critical"].iter().position(|u| *u == s) {
                     Some(u) => conds.push(Cond::Urgency(u as u8)),
@@ -1016,7 +1259,10 @@ impl Parser<'_> {
         }
         let c = conds.into_iter().next();
         if c.is_none() {
-            self.problem(node, "`if` needs a condition, like `if \"body\"` or `if urgency=\"critical\"`");
+            self.problem(
+                node,
+                "`if` needs a condition, like `if \"body\"` or `if urgency=\"critical\"`",
+            );
         }
         c
     }
@@ -1029,7 +1275,11 @@ impl Parser<'_> {
                 "row" | "col" => {
                     let props = self.node_props(node);
                     let children = self.template(self.children(node));
-                    Some(Node::Box { row: name == "row", props, children })
+                    Some(Node::Box {
+                        row: name == "row",
+                        props,
+                        children,
+                    })
                 }
                 "text" => {
                     let props = self.node_props(node);
@@ -1047,17 +1297,33 @@ impl Parser<'_> {
                         }
                     }
                 }
-                "badge" => Some(Node::Badge { props: self.node_props(node) }),
-                "icon" => Some(Node::Icon { props: self.node_props(node) }),
-                "image" => Some(Node::Image { props: self.node_props(node) }),
-                "progress" => Some(Node::Progress { props: self.node_props(node) }),
-                "actions" => Some(Node::Actions { props: self.node_props(node) }),
-                "close" => Some(Node::Close { props: self.node_props(node) }),
+                "badge" => Some(Node::Badge {
+                    props: self.node_props(node),
+                }),
+                "icon" => Some(Node::Icon {
+                    props: self.node_props(node),
+                }),
+                "image" => Some(Node::Image {
+                    props: self.node_props(node),
+                }),
+                "progress" => Some(Node::Progress {
+                    props: self.node_props(node),
+                }),
+                "actions" => Some(Node::Actions {
+                    props: self.node_props(node),
+                }),
+                "close" => Some(Node::Close {
+                    props: self.node_props(node),
+                }),
                 "spacer" => Some(Node::Spacer),
                 "if" => {
                     let cond = self.cond(node);
                     let then = self.template(self.children(node));
-                    cond.map(|cond| Node::If { cond, then, otherwise: Vec::new() })
+                    cond.map(|cond| Node::If {
+                        cond,
+                        then,
+                        otherwise: Vec::new(),
+                    })
                 }
                 "else" => {
                     let children = self.template(self.children(node));
@@ -1083,9 +1349,14 @@ impl Parser<'_> {
     }
 
     fn rule(&mut self, node: &KdlNode) -> Rule {
-        let mut r = Rule { line: self.line(node.span().offset()), ..Rule::default() };
+        let mut r = Rule {
+            line: self.line(node.span().offset()),
+            ..Rule::default()
+        };
         for (key, v) in self.props(node) {
-            let Some(s) = self.string(node, v) else { continue };
+            let Some(s) = self.string(node, v) else {
+                continue;
+            };
             match key {
                 "app" => r.app = Some(s.into()),
                 "summary" => r.summary = Some(s.into()),
@@ -1094,7 +1365,10 @@ impl Parser<'_> {
                     Some(u) => r.urgency = Some(u as u8),
                     None => self.problem(node, "`urgency` is low, normal or critical"),
                 },
-                other => self.problem(node, format!("`rule` has no matcher `{other}`; use app, summary, body, urgency")),
+                other => self.problem(
+                    node,
+                    format!("`rule` has no matcher `{other}`; use app, summary, body, urgency"),
+                ),
             }
         }
         for child in self.children(node) {
@@ -1134,13 +1408,29 @@ fn parse_as(src: &str, id: &str, config: bool) -> Result<Theme, Vec<Problem>> {
                     let offset = d.span.offset();
                     let line = src[..offset.min(src.len())].matches('\n').count() + 1;
                     let msg = d.message.clone().unwrap_or_else(|| "syntax error".into());
-                    Problem { line, message: d.help.as_ref().map_or(msg.clone(), |h| format!("{msg} ({h})")) }
+                    Problem {
+                        line,
+                        message: d
+                            .help
+                            .as_ref()
+                            .map_or(msg.clone(), |h| format!("{msg} ({h})")),
+                    }
                 })
                 .collect::<Vec<_>>();
-            return Err(if problems.is_empty() { vec![Problem { line: 1, message: e.to_string() }] } else { problems });
+            return Err(if problems.is_empty() {
+                vec![Problem {
+                    line: 1,
+                    message: e.to_string(),
+                }]
+            } else {
+                problems
+            });
         }
     };
-    let mut p = Parser { src, problems: Vec::new() };
+    let mut p = Parser {
+        src,
+        problems: Vec::new(),
+    };
     let mut theme = Theme::empty();
     theme.id = id.into();
     theme.name = id.into();
@@ -1183,7 +1473,11 @@ fn parse_as(src: &str, id: &str, config: bool) -> Result<Theme, Vec<Problem>> {
             other => p.problem(node, format!("unknown section `{other}`; use name, theme, behaviour, modules, tokens, template, rule")),
         }
     }
-    if p.problems.is_empty() { Ok(theme) } else { Err(p.problems) }
+    if p.problems.is_empty() {
+        Ok(theme)
+    } else {
+        Err(p.problems)
+    }
 }
 
 /// Rules in `rules` that pick a template `t` (a merged theme) doesn't define.
@@ -1192,8 +1486,12 @@ pub fn missing_templates(rules: &[Rule], t: &Theme) -> Vec<Problem> {
         .iter()
         .filter_map(|r| {
             let name = r.template.as_ref()?;
-            (!t.templates.contains_key(name) && !default_templates().contains_key(name))
-                .then(|| Problem { line: r.line, message: format!("this rule uses template `{name}`, which isn't defined") })
+            (!t.templates.contains_key(name) && !default_templates().contains_key(name)).then(
+                || Problem {
+                    line: r.line,
+                    message: format!("this rule uses template `{name}`, which isn't defined"),
+                },
+            )
         })
         .collect()
 }
@@ -1205,16 +1503,26 @@ pub fn dir() -> PathBuf {
 
 /// Bundled themes, then the files in the themes folder: (id, name). A file's id is its stem.
 pub fn available() -> Vec<(String, String)> {
-    let mut out: Vec<(String, String)> = BUNDLED.iter().map(|(id, src)| (id.to_string(), title(src).unwrap_or_else(|| id.to_string()))).collect();
+    let mut out: Vec<(String, String)> = BUNDLED
+        .iter()
+        .map(|(id, src)| (id.to_string(), title(src).unwrap_or_else(|| id.to_string())))
+        .collect();
     if let Ok(entries) = std::fs::read_dir(dir()) {
-        let mut files: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "kdl")).collect();
+        let mut files: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "kdl"))
+            .collect();
         files.sort();
         for f in files {
             let id = stem(&f);
             if BUNDLED.iter().any(|(b, _)| *b == id) {
                 continue;
             }
-            let name = std::fs::read_to_string(&f).ok().and_then(|s| title(&s)).unwrap_or_else(|| id.clone());
+            let name = std::fs::read_to_string(&f)
+                .ok()
+                .and_then(|s| title(&s))
+                .unwrap_or_else(|| id.clone());
             out.push((id, name));
         }
     }
@@ -1226,12 +1534,23 @@ pub fn is_bundled(id: &str) -> bool {
 }
 
 fn stem(p: &Path) -> String {
-    p.file_stem().and_then(|s| s.to_str()).unwrap_or("theme").to_owned()
+    p.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("theme")
+        .to_owned()
 }
 
 /// The `name "…"` line, without parsing the rest.
 fn title(src: &str) -> Option<String> {
-    src.lines().find_map(|l| l.trim().strip_prefix("name ")?.trim().strip_prefix('"')?.split('"').next().map(str::to_owned))
+    src.lines().find_map(|l| {
+        l.trim()
+            .strip_prefix("name ")?
+            .trim()
+            .strip_prefix('"')?
+            .split('"')
+            .next()
+            .map(str::to_owned)
+    })
 }
 
 /// Where a theme reference points: a bundled theme's source, or a file.
@@ -1267,12 +1586,27 @@ pub fn source(id: &str) -> Option<String> {
 /// A theme with everything it starts from merged in (`theme "…"` chains, up to a few deep).
 pub fn resolve(id: &str) -> Result<Theme, Vec<Problem>> {
     let mut chain = Vec::new();
-    let mut next = Some(if id.is_empty() { "capsule".to_owned() } else { id.to_owned() });
+    let mut next = Some(if id.is_empty() {
+        "capsule".to_owned()
+    } else {
+        id.to_owned()
+    });
     while let Some(id) = next.take() {
         if chain.len() >= 4 || chain.iter().any(|t: &Theme| t.id == id) {
-            return Err(vec![Problem { line: 0, message: format!("`{id}` starts from itself or goes too deep") }]);
+            return Err(vec![Problem {
+                line: 0,
+                message: format!("`{id}` starts from itself or goes too deep"),
+            }]);
         }
-        let src = source(&id).ok_or_else(|| vec![Problem { line: 0, message: format!("no theme called `{id}` (not bundled, and no {}/{id}.kdl)", dir().display()) }])?;
+        let src = source(&id).ok_or_else(|| {
+            vec![Problem {
+                line: 0,
+                message: format!(
+                    "no theme called `{id}` (not bundled, and no {}/{id}.kdl)",
+                    dir().display()
+                ),
+            }]
+        })?;
         let t = parse(&src, &id)?;
         next = t.base.clone();
         chain.push(t);
@@ -1287,7 +1621,11 @@ pub fn resolve(id: &str) -> Result<Theme, Vec<Problem>> {
     }
     let first = &chain[0];
     out.id = first.id.clone();
-    out.name = if first.name == first.id { first.id.clone() } else { first.name.clone() };
+    out.name = if first.name == first.id {
+        first.id.clone()
+    } else {
+        first.name.clone()
+    };
     out.base = None;
     Ok(out)
 }
@@ -1301,7 +1639,13 @@ mod tests {
         parse(DEFAULT, "default").unwrap();
         for (id, src) in BUNDLED {
             if let Err(e) = parse(src, id) {
-                panic!("{id}: {}", e.iter().map(|p| p.to_string()).collect::<Vec<_>>().join("; "));
+                panic!(
+                    "{id}: {}",
+                    e.iter()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                );
             }
         }
     }
@@ -1309,11 +1653,22 @@ mod tests {
     #[test]
     fn the_example_themes_in_the_docs_parse() {
         let docs = include_str!("../docs/themes.md");
-        let examples: Vec<&str> = docs.split("```kdl\n").skip(1).filter_map(|b| b.split("```").next()).filter(|b| b.contains("\nname \"")).collect();
+        let examples: Vec<&str> = docs
+            .split("```kdl\n")
+            .skip(1)
+            .filter_map(|b| b.split("```").next())
+            .filter(|b| b.contains("\nname \""))
+            .collect();
         assert_eq!(examples.len(), 2);
         for src in examples {
             if let Err(e) = parse(src, "example") {
-                panic!("{}\n{src}", e.iter().map(|p| p.to_string()).collect::<Vec<_>>().join("; "));
+                panic!(
+                    "{}\n{src}",
+                    e.iter()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                );
             }
         }
     }
@@ -1322,15 +1677,46 @@ mod tests {
     fn themes_dont_set_behaviour_but_the_config_does() {
         let src = "name \"x\"\nbehaviour {\n    position \"bottom-left\"\n}\n";
         let e = parse(src, "x").unwrap_err();
-        assert!(e[0].line == 2 && e[0].message.contains("config.kdl"), "{e:?}");
+        assert!(
+            e[0].line == 2 && e[0].message.contains("config.kdl"),
+            "{e:?}"
+        );
         let c = parse_config(src).unwrap();
         assert_eq!(c.behaviour().position, Position::BottomLeft);
     }
 
     #[test]
+    fn every_position_parses_by_its_word() {
+        for p in Position::ALL {
+            let c = parse_config(&format!(
+                "behaviour {{\n    position \"{}\"\n}}\n",
+                p.word()
+            ))
+            .unwrap();
+            assert_eq!(c.behaviour().position, p);
+        }
+        assert_eq!(
+            parse_config("behaviour {\n    position \"top-center\"\n}\n")
+                .unwrap()
+                .behaviour()
+                .position,
+            Position::TopCenter
+        );
+        let e = parse_config("behaviour {\n    position \"center\"\n}\n").unwrap_err();
+        assert!(
+            e[0].message.contains(
+                "top-left, top-center, top-right, bottom-left, bottom-center, bottom-right"
+            ),
+            "{e:?}"
+        );
+    }
+
+    #[test]
     fn rules_may_use_templates_from_below_but_not_missing_ones() {
         let base = parse("template \"alert\" { text \"{summary}\" }\n", "base").unwrap();
-        let own = parse_config("theme \"base\"\nrule urgency=\"critical\" { template \"alert\" }\n").unwrap();
+        let own =
+            parse_config("theme \"base\"\nrule urgency=\"critical\" { template \"alert\" }\n")
+                .unwrap();
         assert!(missing_templates(&own.rules, &base.merge(&own)).is_empty());
         let own = parse_config("\n\nrule app=\"x\" { template \"nope\" }\n").unwrap();
         let missing = missing_templates(&own.rules, &base.merge(&own));
@@ -1357,11 +1743,20 @@ rule app="Spotify" { hide }
         let mut n = Note::new(1, "Slack", "very URGENT thing", "");
         let look = t.look(&n, true);
         assert_eq!(look.tokens.radius, 30.0, "later rules win");
-        assert_eq!(t.routing(&n), Routing { hide: false, timeout: Some(Timeout::Never), interrupt: false });
+        assert_eq!(
+            t.routing(&n),
+            Routing {
+                hide: false,
+                timeout: Some(Timeout::Never),
+                interrupt: false
+            }
+        );
         n.app = "Spotify".into();
         n.summary = "song".into();
         assert!(t.routing(&n).hide);
-        assert!(glob("a*c", "abbbc") && !glob("a*c", "abd") && glob("*", "") && glob("Slack", "slack"));
+        assert!(
+            glob("a*c", "abbbc") && !glob("a*c", "abd") && glob("*", "") && glob("Slack", "slack")
+        );
     }
 
     #[test]

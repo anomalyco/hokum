@@ -63,12 +63,27 @@ fn sender(h: &Header<'_>) -> String {
 
 impl Agent {
     fn tell(&self, h: &Header<'_>, device: OwnedObjectPath, ask: Ask) {
-        let _ = self.events.send(Event::Agent(Call { sender: sender(h), device: device.to_string(), ask, answer: None }));
+        let _ = self.events.send(Event::Agent(Call {
+            sender: sender(h),
+            device: device.to_string(),
+            ask,
+            answer: None,
+        }));
     }
 
-    async fn ask(&self, h: &Header<'_>, device: OwnedObjectPath, ask: Ask) -> Result<Reply, AgentError> {
+    async fn ask(
+        &self,
+        h: &Header<'_>,
+        device: OwnedObjectPath,
+        ask: Ask,
+    ) -> Result<Reply, AgentError> {
         let (tx, rx) = async_channel::bounded(1);
-        let call = Call { sender: sender(h), device: device.to_string(), ask, answer: Some(tx) };
+        let call = Call {
+            sender: sender(h),
+            device: device.to_string(),
+            ask,
+            answer: Some(tx),
+        };
         if self.events.send(Event::Agent(call)).is_err() {
             return Err(AgentError::Canceled("agent stopped".into()));
         }
@@ -86,39 +101,76 @@ impl Agent {
         let _ = self.events.send(Event::AgentReleased);
     }
 
-    async fn request_pin_code(&self, #[zbus(header)] h: Header<'_>, device: OwnedObjectPath) -> Result<String, AgentError> {
+    async fn request_pin_code(
+        &self,
+        #[zbus(header)] h: Header<'_>,
+        device: OwnedObjectPath,
+    ) -> Result<String, AgentError> {
         match self.ask(&h, device, Ask::PinCode).await? {
             Reply::Pin(p) if !p.is_empty() && p.len() <= 16 => Ok(p),
             _ => Err(AgentError::Rejected("no PIN".into())),
         }
     }
 
-    async fn display_pin_code(&self, #[zbus(header)] h: Header<'_>, device: OwnedObjectPath, pincode: String) -> Result<(), AgentError> {
+    async fn display_pin_code(
+        &self,
+        #[zbus(header)] h: Header<'_>,
+        device: OwnedObjectPath,
+        pincode: String,
+    ) -> Result<(), AgentError> {
         self.tell(&h, device, Ask::DisplayPinCode(pincode));
         Ok(())
     }
 
-    async fn request_passkey(&self, #[zbus(header)] h: Header<'_>, device: OwnedObjectPath) -> Result<u32, AgentError> {
+    async fn request_passkey(
+        &self,
+        #[zbus(header)] h: Header<'_>,
+        device: OwnedObjectPath,
+    ) -> Result<u32, AgentError> {
         match self.ask(&h, device, Ask::Passkey).await? {
             Reply::Passkey(p) if p <= 999_999 => Ok(p),
             _ => Err(AgentError::Rejected("no passkey".into())),
         }
     }
 
-    async fn display_passkey(&self, #[zbus(header)] h: Header<'_>, device: OwnedObjectPath, passkey: u32, entered: u16) {
+    async fn display_passkey(
+        &self,
+        #[zbus(header)] h: Header<'_>,
+        device: OwnedObjectPath,
+        passkey: u32,
+        entered: u16,
+    ) {
         self.tell(&h, device, Ask::DisplayPasskey { passkey, entered });
     }
 
-    async fn request_confirmation(&self, #[zbus(header)] h: Header<'_>, device: OwnedObjectPath, passkey: u32) -> Result<(), AgentError> {
-        self.ask(&h, device, Ask::Confirmation(passkey)).await.map(|_| ())
+    async fn request_confirmation(
+        &self,
+        #[zbus(header)] h: Header<'_>,
+        device: OwnedObjectPath,
+        passkey: u32,
+    ) -> Result<(), AgentError> {
+        self.ask(&h, device, Ask::Confirmation(passkey))
+            .await
+            .map(|_| ())
     }
 
-    async fn request_authorization(&self, #[zbus(header)] h: Header<'_>, device: OwnedObjectPath) -> Result<(), AgentError> {
+    async fn request_authorization(
+        &self,
+        #[zbus(header)] h: Header<'_>,
+        device: OwnedObjectPath,
+    ) -> Result<(), AgentError> {
         self.ask(&h, device, Ask::Authorization).await.map(|_| ())
     }
 
-    async fn authorize_service(&self, #[zbus(header)] h: Header<'_>, device: OwnedObjectPath, uuid: String) -> Result<(), AgentError> {
-        self.ask(&h, device, Ask::AuthorizeService(uuid)).await.map(|_| ())
+    async fn authorize_service(
+        &self,
+        #[zbus(header)] h: Header<'_>,
+        device: OwnedObjectPath,
+        uuid: String,
+    ) -> Result<(), AgentError> {
+        self.ask(&h, device, Ask::AuthorizeService(uuid))
+            .await
+            .map(|_| ())
     }
 
     async fn cancel(&self, #[zbus(header)] h: Header<'_>) {
@@ -127,15 +179,26 @@ impl Agent {
 }
 
 /// Bluetooth apps that keep their own default agent while they run.
-const OTHER_AGENTS: &[&str] = &["blueman-applet", "blueberry-tray", "kded5", "kded6", "overskride"];
+const OTHER_AGENTS: &[&str] = &[
+    "blueman-applet",
+    "blueberry-tray",
+    "kded5",
+    "kded6",
+    "overskride",
+];
 
 /// Whether another Bluetooth app (blueman's applet, blueberry, Plasma's Bluedevil in kded)
 /// is running and so holds the default agent. BlueZ has no call that says who does, and
 /// `RequestDefaultAgent` would take it from them.
 pub fn other_default_agent() -> bool {
-    let Ok(dir) = std::fs::read_dir("/proc") else { return false };
+    let Ok(dir) = std::fs::read_dir("/proc") else {
+        return false;
+    };
     dir.flatten().any(|e| {
-        e.file_name().to_str().is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()))
-            && std::fs::read_to_string(e.path().join("comm")).is_ok_and(|c| OTHER_AGENTS.contains(&c.trim()))
+        e.file_name()
+            .to_str()
+            .is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()))
+            && std::fs::read_to_string(e.path().join("comm"))
+                .is_ok_and(|c| OTHER_AGENTS.contains(&c.trim()))
     })
 }
