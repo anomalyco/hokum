@@ -26,6 +26,11 @@ pub fn colors_path() -> Option<PathBuf> {
         .map(|h| PathBuf::from(h).join(".local/state/omarchy/current/theme/colors.toml"))
 }
 
+/// Whether this is an Omarchy machine, so the window offers the theme.
+pub fn present() -> bool {
+    colors_path().is_some_and(|p| p.exists())
+}
+
 /// `src` with its placeholders filled from the current Omarchy theme.
 pub fn render(src: &str) -> String {
     let toml = colors_path()

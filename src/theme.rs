@@ -1571,6 +1571,8 @@ pub fn dir() -> PathBuf {
 pub fn available() -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = BUNDLED
         .iter()
+        // Omarchy's theme only means something where Omarchy is; `theme "omarchy"` still works.
+        .filter(|(id, _)| *id != crate::omarchy_theme::ID || crate::omarchy_theme::present())
         .map(|(id, src)| (id.to_string(), title(src).unwrap_or_else(|| id.to_string())))
         .collect();
     if let Ok(entries) = std::fs::read_dir(dir()) {
