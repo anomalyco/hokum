@@ -304,7 +304,7 @@ the user's config; the settings window manages `rule app="…"` blocks there.
 Behaviour isn't part of a theme. `behaviour { … }` lives only in `config.kdl`: `position`
 (`"top-right"`, `"top-left"`, `"top-center"`, `"bottom-right"`, `"bottom-left"`,
 `"bottom-center"`), `stay` (seconds),
-`show-at-most` (1 to 20), `pause-on-hover`, `do-not-disturb` and `check-for-updates`
+`show-at-most` (1 to 20), `history-length` (0 to 100), `pause-on-hover`, `do-not-disturb` and `check-for-updates`
 (`#true`/`#false`), `sound` and `sound-critical` (notification sounds, off by default),
 `appearance` (`"system"`, `"light"`, `"dark"`) and `clock` (`"auto"`, `"12h"`, `"24h"`). The settings window writes it, and anything
 unset uses Hokum's defaults (top right, 6 seconds, 5 cards, pause on hover, system appearance).
