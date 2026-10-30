@@ -96,15 +96,23 @@ hokum service [--replace] # run in the background (what hokum.service starts)
 hokum check [path]        # report problems in config.kdl, or in a theme or config file
 hokum dismiss [--all]     # close the newest card, or every card
 hokum invoke              # do what clicking the newest card does
+hokum restore [--all]     # bring back the newest card that left, or all of them
+hokum history             # list what restore would bring back
 hokum dnd [on|off|toggle] # print Do not disturb, or set it (--json, --watch for bars)
 hokum update [--install]  # check for a new build now (and install it)
 hokum --version
 ```
 
-`dismiss`, `invoke` and `dnd` are for keybindings and bars, like `makoctl`. `hokum dnd on` saves
+`dismiss`, `invoke`, `restore`, `history` and `dnd` are for keybindings and bars, like `makoctl`. `hokum dnd on` saves
 to `config.kdl` just as the settings window's switch does. They call `app.hokum.Daemon` on the
-session bus (`Dismiss`, `Invoke`, `SetDoNotDisturb` and a `DoNotDisturb` property that announces
-its changes), which scripts can use directly.
+session bus (`Dismiss`, `Invoke`, `Restore`, `History`, `SetDoNotDisturb` and a `DoNotDisturb`
+property that announces its changes), which scripts can use directly.
+
+Cards that expire, that you dismiss, and those Do not disturb holds back go to a history (the last
+20, in memory; `history-length` in `behaviour` changes it, 0 turns it off). `hokum restore` brings
+the newest back, even during Do not disturb. Its app was already told it closed, so its own buttons
+are gone. Hokum's own cards (volume, brightness, welcome, update), hidden ones, and those an app
+takes back itself aren't kept.
 
 Like Hex, Hokum is one process: the service owns the bus name, draws the cards on a
 click-through overlay, hosts the window, runs Sound and Bluetooth on their own threads and keeps

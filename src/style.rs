@@ -198,6 +198,8 @@ pub struct Behaviour {
     pub sound_name: String,
     /// Critical notifications' sound.
     pub sound_critical: String,
+    /// Cards kept after they leave, for `hokum restore`; 0 keeps none.
+    pub history_length: usize,
 }
 
 impl Default for Behaviour {
@@ -214,6 +216,7 @@ impl Default for Behaviour {
             sound: false,
             sound_name: "message-new-instant".into(),
             sound_critical: "dialog-warning".into(),
+            history_length: 20,
         }
     }
 }

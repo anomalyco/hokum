@@ -2,7 +2,7 @@
 //! state. It shows for the first card, so it opens on the output focused then, and hides once
 //! the last card has left.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
@@ -67,6 +67,9 @@ pub struct Ui {
     overlay_h: f32,
     /// Plays notification sounds; None when headless.
     pub chime: Option<Sender<crate::chime::Pick>>,
+    /// Cards that left (expired, dismissed, or held back by Do not disturb), newest first, for
+    /// `hokum restore`. In memory only, and without decoded pictures.
+    history: VecDeque<Note>,
 }
 
 impl Ui {
@@ -88,6 +91,7 @@ impl Ui {
             chime: None,
             heights: HashMap::new(),
             overlay_h: HEIGHT,
+            history: VecDeque::new(),
         };
         ui.configure(config);
         ui
@@ -145,6 +149,7 @@ impl Ui {
         if settings.do_not_disturb != self.settings.do_not_disturb {
             let _ = self.out.send(Out::Dnd(settings.do_not_disturb));
         }
+        self.history.truncate(settings.history_length);
         self.settings = settings;
     }
 
@@ -176,8 +181,14 @@ impl Ui {
         }
         if self.settings.do_not_disturb && n.urgency < 2 && !routing.interrupt && !n.hud {
             let _ = self.out.send(Out::Closed(n.id, Reason::Expired));
+            self.remember(n);
             return;
         }
+        self.place(n, routing.sound.as_ref(), true);
+    }
+
+    /// Puts `n` on screen: its timer, then in place of the card it replaces or on top.
+    fn place(&mut self, mut n: Note, sound: Option<&crate::chime::Choice>, chime: bool) {
         let base = self.settings.stay();
         let timeout = match n.timeout {
             Timeout::Never => None,
@@ -200,17 +211,17 @@ impl Ui {
         let own = n.hud || n.id == crate::welcome::ID || n.id == crate::update::ID;
         if replaces.is_none()
             && !own
+            && chime
             && let Some(chime) = &self.chime
-            && let Some(pick) =
-                crate::chime::choose(&self.settings, routing.sound.as_ref(), &n.sound, n.urgency)
+            && let Some(pick) = crate::chime::choose(&self.settings, sound, &n.sound, n.urgency)
         {
             let _ = chime.send(pick);
         }
         if let Some(i) = replaces {
-            let old = self.notes[i].id;
-            n.slot = self.notes[i].slot;
-            if old != n.id {
-                let _ = self.out.send(Out::Closed(old, Reason::Closed));
+            let old = &self.notes[i];
+            n.slot = old.slot;
+            if old.id != n.id && !old.restored {
+                let _ = self.out.send(Out::Closed(old.id, Reason::Closed));
             }
             self.notes[i] = n;
         } else {
@@ -234,18 +245,86 @@ impl Ui {
     }
 
     pub fn close(&mut self, id: u32, reason: Reason) {
-        let before = self.notes.len();
-        self.notes.retain(|n| n.id != id);
+        let gone = self
+            .notes
+            .iter()
+            .position(|n| n.id == id)
+            .map(|i| self.notes.remove(i));
         if self.heights.remove(&id).is_some() {
             self.fit_overlay();
         }
-        if self.notes.len() != before {
+        if let Some(n) = gone {
             if id == crate::update::ID {
                 crate::update::closed(reason);
             }
-            let _ = self.out.send(Out::Closed(id, reason));
+            if !n.restored {
+                let _ = self.out.send(Out::Closed(id, reason));
+            }
+            // An app taking its own notification back means it no longer applies.
+            if reason != Reason::Closed {
+                self.remember(n);
+            }
             self.reschedule();
         }
+    }
+
+    /// Keeps a card that left for `hokum restore`, unless it's Hokum's own.
+    fn remember(&mut self, mut n: Note) {
+        if self.settings.history_length == 0
+            || n.hud
+            || n.id == crate::welcome::ID
+            || n.id == crate::update::ID
+        {
+            return;
+        }
+        // A file is cheap to keep and decode again; a picture sent as pixels isn't.
+        (n.icon, n.image) = (None, None);
+        if !matches!(n.image_src, Some(crate::icons::Source::File(_))) {
+            n.image_src = None;
+        }
+        (n.deadline, n.left) = (None, None);
+        self.history.retain(|o| o.id != n.id);
+        self.history.push_front(n);
+        self.history.truncate(self.settings.history_length);
+    }
+
+    /// `hokum restore [--all]`: brings back the newest card that left, or all of them (newest
+    /// on top), even during Do not disturb. Their senders were already told they closed, so
+    /// buttons that only the sender could answer are gone; Omarchy's commands still run.
+    /// Returns how many came back.
+    pub fn restore(&mut self, all: bool) -> u32 {
+        let take = if all { self.history.len() } else { 1 };
+        let mut back: Vec<Note> = self.history.drain(..take.min(self.history.len())).collect();
+        back.retain(|n| !self.showing(n.id));
+        let count = back.len() as u32;
+        for mut n in back.into_iter().rev() {
+            n.restored = true;
+            let commands: Vec<String> = n.commands.iter().map(|(k, _)| k.clone()).collect();
+            n.actions.retain(|(k, _)| commands.contains(k));
+            n.has_default = commands.iter().any(|k| k == "default");
+            if let Some(cache) = &self.cache {
+                n.decode(cache);
+            }
+            self.place(n, None, false);
+        }
+        count
+    }
+
+    /// `hokum history`: what `restore` would bring back, newest first, as (id, time, app,
+    /// summary, body).
+    pub fn history(&self) -> Vec<(u32, String, String, String, String)> {
+        self.history
+            .iter()
+            .map(|n| {
+                (
+                    n.id,
+                    n.time.h24(),
+                    n.app.clone(),
+                    n.summary.clone(),
+                    n.body.clone(),
+                )
+            })
+            .collect()
     }
 
     /// Grows the overlay to hold a card taller than it (very large text, many buttons), and
@@ -268,11 +347,14 @@ impl Ui {
     }
 
     fn clear(&mut self) {
-        for n in self.notes.drain(..) {
+        for n in std::mem::take(&mut self.notes) {
             if n.id == crate::update::ID {
                 crate::update::closed(Reason::Dismissed);
             }
-            let _ = self.out.send(Out::Closed(n.id, Reason::Dismissed));
+            if !n.restored {
+                let _ = self.out.send(Out::Closed(n.id, Reason::Dismissed));
+            }
+            self.remember(n);
         }
         self.reschedule();
     }
@@ -317,6 +399,7 @@ impl Ui {
     fn invoke_with(&mut self, id: u32, key: &str, token: Option<String>) {
         let note = self.notes.iter().find(|n| n.id == id);
         let resident = note.is_some_and(|n| n.resident);
+        let restored = note.is_some_and(|n| n.restored);
         if id == crate::welcome::ID {
             match (&self.window, token) {
                 (Some(w), Some(t)) => w.activate(t),
@@ -335,7 +418,9 @@ impl Ui {
         if let Some(argv) = note.and_then(|n| n.command(key)) {
             run(argv, token.as_deref());
         }
-        let _ = self.out.send(Out::Action(id, key.to_owned(), token));
+        if !restored {
+            let _ = self.out.send(Out::Action(id, key.to_owned(), token));
+        }
         if !resident {
             self.dismiss(id);
         }
@@ -1124,5 +1209,113 @@ mod tests {
         ui.upsert(Note::new(7, "Mute", "s", "b"));
         ui.upsert(Note::new(8, "Hush", "s", "b"));
         assert_eq!(heard(), 0, "hidden and silenced apps");
+    }
+
+    fn kept(ui: &Ui) -> Vec<u32> {
+        ui.history.iter().map(|n| n.id).collect()
+    }
+
+    fn on_screen(ui: &Ui) -> Vec<u32> {
+        ui.notes.iter().map(|n| n.id).collect()
+    }
+
+    #[test]
+    fn history_keeps_what_left_and_what_do_not_disturb_held() {
+        let (mut ui, _rx) = ui();
+        for id in 1..=4 {
+            ui.upsert(Note::new(id, "App", "s", "b"));
+        }
+        ui.close(1, Reason::Expired);
+        ui.close(2, Reason::Dismissed);
+        ui.close(3, Reason::Closed);
+        ui.settings.do_not_disturb = true;
+        ui.upsert(Note::new(5, "App", "s", "b"));
+        let mut hud = Note::new(6, "Volume", "Speakers", "");
+        hud.hud = true;
+        ui.upsert(hud);
+        ui.close(6, Reason::Expired);
+        assert_eq!(
+            kept(&ui),
+            [5, 2, 1],
+            "not what the app took back, nor the volume card"
+        );
+        ui.clear();
+        assert_eq!(kept(&ui), [4, 5, 2, 1]);
+    }
+
+    #[test]
+    fn history_holds_at_most_history_length_and_none_at_zero() {
+        let (mut ui, _rx) = ui();
+        ui.settings.history_length = 2;
+        for id in 1..=3 {
+            ui.upsert(Note::new(id, "App", "s", "b"));
+            ui.close(id, Reason::Expired);
+        }
+        assert_eq!(kept(&ui), [3, 2]);
+        let mut off = ui.settings.clone();
+        off.history_length = 0;
+        ui.apply(off);
+        assert_eq!(kept(&ui), Vec::<u32>::new());
+        ui.upsert(Note::new(4, "App", "s", "b"));
+        ui.close(4, Reason::Expired);
+        assert_eq!(kept(&ui), Vec::<u32>::new());
+        let t = crate::theme::parse_config("behaviour { history-length 0; }\n").unwrap();
+        let mut b = Behaviour::default();
+        t.behave.apply(&mut b);
+        assert_eq!(
+            (Behaviour::default().history_length, b.history_length),
+            (20, 0)
+        );
+    }
+
+    #[test]
+    fn restore_brings_back_the_newest_even_during_do_not_disturb() {
+        let (mut ui, rx) = ui();
+        ui.settings.do_not_disturb = true;
+        for id in 1..=3 {
+            ui.upsert(Note::new(id, "App", "s", "b"));
+        }
+        assert_eq!(on_screen(&ui), Vec::<u32>::new());
+        assert_eq!(ui.restore(false), 1);
+        assert_eq!(on_screen(&ui), [3]);
+        assert_eq!(ui.restore(true), 2);
+        assert_eq!(on_screen(&ui), [2, 1, 3]);
+        assert_eq!(ui.restore(true), 0);
+        assert_eq!(
+            rx.try_iter().collect::<Vec<_>>(),
+            [1, 2, 3].map(|id| Out::Closed(id, Reason::Expired)),
+            "only the closes Do not disturb sent"
+        );
+        assert_eq!(
+            ui.history().first().map(|h| h.2.as_str()),
+            None,
+            "restored cards left history"
+        );
+    }
+
+    #[test]
+    fn a_restored_card_never_writes_to_its_old_sender() {
+        let (mut ui, rx) = ui();
+        let mut n = Note::new(7, "Slack", "Dax", "ship it");
+        n.has_default = true;
+        n.actions = vec![("reply".into(), "Reply".into())];
+        ui.upsert(n);
+        ui.close(7, Reason::Dismissed);
+        assert_eq!(rx.try_iter().count(), 1);
+        assert_eq!(ui.restore(false), 1);
+        assert!(ui.notes[0].restored && !ui.notes[0].has_default);
+        assert_eq!(ui.notes[0].actions, []);
+        ui.invoke_with(7, "reply", None);
+        assert_eq!(on_screen(&ui), Vec::<u32>::new());
+        ui.restore(false);
+        ui.close(7, Reason::Expired);
+        ui.restore(false);
+        ui.clear();
+        assert_eq!(
+            rx.try_iter().count(),
+            0,
+            "no ActionInvoked, no NotificationClosed"
+        );
+        assert_eq!(kept(&ui), [7], "and it goes back to history each time");
     }
 }
