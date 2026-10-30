@@ -108,6 +108,71 @@ fn slack(summary: &str, body: &str) -> Option<(String, String, String)> {
     ))
 }
 
+#[cfg(test)]
+mod slack_tests {
+    use super::slack;
+
+    fn split(summary: &str, body: &str) -> Option<(String, String, String)> {
+        slack(summary, body)
+    }
+
+    #[test]
+    fn channel_messages_split_into_channel_sender_and_message() {
+        assert_eq!(
+            split("[Acme] in #general", "Dax: ship it: today"),
+            Some(("#general".into(), "Dax".into(), "ship it: today".into()))
+        );
+    }
+
+    #[test]
+    fn direct_messages_keep_the_whole_body() {
+        assert_eq!(
+            split("[Acme] from Dax", "Dax: hi"),
+            Some(("Direct message".into(), "Dax".into(), "Dax: hi".into()))
+        );
+    }
+
+    #[test]
+    fn anything_else_is_left_alone() {
+        for (summary, body) in [
+            ("Hello", "Dax: hi"),
+            ("Acme in #general", "Dax: hi"),
+            ("[Acme] in #general", "no sender here"),
+            ("[Acme] in #general", ": empty sender"),
+            ("[Acme] mentioned you", "Dax: hi"),
+        ] {
+            assert_eq!(split(summary, body), None, "{summary:?} {body:?}");
+        }
+    }
+
+    #[test]
+    fn a_sender_is_at_most_80_bytes() {
+        let at = format!("{}: hi", "a".repeat(80));
+        let over = format!("{}: hi", "a".repeat(81));
+        assert!(split("[Acme] in #general", &at).is_some());
+        assert_eq!(split("[Acme] in #general", &over), None);
+    }
+
+    #[test]
+    fn slack_cards_read_as_sender_then_message() {
+        let n = super::build(super::Request {
+            id: 1,
+            bus_pid: None,
+            app_name: "Slack".into(),
+            app_icon: String::new(),
+            summary: "[Acme] in #general".into(),
+            body: "Dax: ship it".into(),
+            actions: Vec::new(),
+            hints: Default::default(),
+            expire_timeout: -1,
+        });
+        assert_eq!(
+            (n.summary.as_str(), n.body.as_str(), n.context.as_deref()),
+            ("Dax", "ship it", Some("#general"))
+        );
+    }
+}
+
 /// Omarchy's `omarchy-exec-argv` hint: a string holding a JSON array of argv words
 /// (`omarchy-notification-send --exec`). Checked like Omarchy's shell does: 1–32 words, no
 /// NULs, and a program that isn't empty or an option.
