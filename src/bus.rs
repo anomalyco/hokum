@@ -62,31 +62,83 @@ fn image_data(v: &OwnedValue) -> Option<Source> {
     crate::icons::image_data(int(0)?, int(1)?, int(2)?, alpha, int(4)?, int(5)?, &data)
 }
 
-/// Bodies may carry the spec's small markup subset; cards show plain text.
+/// Bodies may carry the spec's small markup subset; cards show plain text. Only that subset's
+/// tags go: any other `<` is text, as in `3 < 5` or `Ben <ben@example.com>`.
 fn plain(body: &str) -> String {
     let mut out = String::with_capacity(body.len());
-    let mut tag = false;
-    for ch in body.chars() {
-        match ch {
-            '<' => tag = true,
-            '>' if tag => tag = false,
-            _ if !tag => out.push(ch),
-            _ => {}
-        }
+    let mut rest = body;
+    while let Some(ch) = rest.chars().next() {
+        let skip = match ch {
+            '<' => tag(rest).map(|(len, newline)| {
+                if newline {
+                    out.push('\n');
+                }
+                len
+            }),
+            '&' => entity(rest).map(|(len, decoded)| {
+                out.push(decoded);
+                len
+            }),
+            _ => None,
+        };
+        let len = skip.unwrap_or_else(|| {
+            out.push(ch);
+            ch.len_utf8()
+        });
+        rest = &rest[len..];
     }
-    let out = out
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
-        .replace("&#39;", "'")
-        .replace("&amp;", "&");
     let out = out.trim();
     // Very long bodies read as a preview.
     match out.char_indices().nth(280) {
         Some((i, _)) => format!("{}…", out[..i].trim_end()),
         None => out.to_owned(),
     }
+}
+
+/// The length of the spec's tag at the start of `s` (`<b>`, `</i>`, `<a href="…">`, `<br/>`,
+/// `<img … />`), and whether it breaks the line; `None` when `s` starts with a plain `<`.
+fn tag(s: &str) -> Option<(usize, bool)> {
+    let end = s.find('>')?;
+    let inner = &s[1..end];
+    let (closing, inner) = match inner.strip_prefix('/') {
+        Some(inner) => (true, inner),
+        None => (false, inner),
+    };
+    let name_len = inner
+        .find(|c: char| !c.is_ascii_alphabetic())
+        .unwrap_or(inner.len());
+    let (name, rest) = inner.split_at(name_len);
+    let ok = match name.to_ascii_lowercase().as_str() {
+        "b" | "i" | "u" => rest.is_empty(),
+        "br" => !closing && matches!(rest.trim(), "" | "/"),
+        // Only these two take attributes.
+        "a" if closing => rest.is_empty(),
+        "a" | "img" => rest.is_empty() || rest.starts_with(char::is_whitespace) || rest == "/",
+        _ => false,
+    };
+    ok.then_some((end + 1, name.eq_ignore_ascii_case("br")))
+}
+
+/// The entity at the start of `s` (`&amp;`, `&#8217;`, `&#x2014;`, ...) as its length and
+/// character. Decoded once, so `&amp;lt;` reads `&lt;`.
+fn entity(s: &str) -> Option<(usize, char)> {
+    let end = s.bytes().take(12).position(|b| b == b';')?;
+    let ch = match &s[1..end] {
+        "lt" => '<',
+        "gt" => '>',
+        "amp" => '&',
+        "quot" => '"',
+        "apos" => '\'',
+        n => {
+            let n = n.strip_prefix('#')?;
+            let code = match n.strip_prefix(['x', 'X']) {
+                Some(hex) => u32::from_str_radix(hex, 16).ok()?,
+                None => n.parse().ok()?,
+            };
+            char::from_u32(code)?
+        }
+    };
+    Some((end + 1, ch))
 }
 
 /// Slack titles every message `[workspace] in #channel` (or `[workspace] from Name`) and puts
@@ -352,7 +404,8 @@ fn build(r: Request) -> Note {
         app: crate::apps::clean(&who.app),
         ..who
     };
-    let (summary, body) = (plain(&summary), plain(&who.body));
+    // The spec has no markup in the summary: `Ben <ben@example.com>` is the whole of it.
+    let (summary, body) = (summary.trim().to_owned(), plain(&who.body));
     let slacky = app.eq_ignore_ascii_case("slack") || desktop.as_deref() == Some("slack");
     let mut n = match slacky.then(|| slack(&summary, &body)).flatten() {
         Some((context, sender, message)) => {
@@ -1015,6 +1068,54 @@ mod tests {
         assert_eq!(web_site("Meeting at 5.30\n\nbring notes"), None);
         assert_eq!(web_site("ok.\nsecond line"), None);
         assert_eq!(web_site("<b>bold</b>\n\nx"), None);
+    }
+
+    #[test]
+    fn markup_goes_but_literal_brackets_stay() {
+        for (body, shown) in [
+            ("3 < 5 errors remain", "3 < 5 errors remain"),
+            (
+                "Ben <ben@example.com> sent you a file",
+                "Ben <ben@example.com> sent you a file",
+            ),
+            ("if (a<b) { return; }", "if (a<b) { return; }"),
+            ("x<b and y>z", "x<b and y>z"),
+            ("a -> b <- c", "a -> b <- c"),
+            ("<b>bold</b>, <i>it</i>, <u>under</u>", "bold, it, under"),
+            ("<a href=\"https://x.org\">click</a>", "click"),
+            ("<img src=\"file:///a.png\" alt=\"pic\"/>caption", "caption"),
+            (
+                "line1<br>line2<br/>line3<br />line4",
+                "line1\nline2\nline3\nline4",
+            ),
+            ("It&#8217;s &#x2014; done", "It\u{2019}s \u{2014} done"),
+            (
+                "&lt;b&gt; &amp; &quot;q&quot; &apos;s&apos; &#39;",
+                "<b> & \"q\" 's' '",
+            ),
+            ("&amp;lt; stays escaped", "&lt; stays escaped"),
+            ("&#38;lt; too", "&lt; too"),
+            (
+                "AT&T &unknown; &#xZZ; &#1114112;",
+                "AT&T &unknown; &#xZZ; &#1114112;",
+            ),
+            ("  <b></b>padded  ", "padded"),
+            ("&éééééé; &", "&éééééé; &"),
+        ] {
+            assert_eq!(super::plain(body), shown, "{body:?}");
+        }
+        let long = "é".repeat(300);
+        assert_eq!(super::plain(&long), format!("{}…", "é".repeat(280)));
+    }
+
+    #[test]
+    fn the_summary_is_plain_text_already() {
+        let mut r = request(Vec::new());
+        r.summary = "Ben <ben@example.com> & co".into();
+        r.body = "<b>hi</b>".into();
+        let n = super::build(r);
+        assert_eq!(n.summary, "Ben <ben@example.com> & co");
+        assert_eq!(n.body, "hi");
     }
 
     fn fixture() -> (crate::entries::Index, std::path::PathBuf) {
