@@ -37,6 +37,7 @@ mod config;
 mod desktop;
 mod entries;
 mod glyph;
+mod i18n;
 mod icons;
 mod integrations;
 mod modules;

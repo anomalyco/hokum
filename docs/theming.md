@@ -5,6 +5,7 @@ It starts from a theme and overrides whatever you like:
 
 ```kdl
 theme "signal"               // start from a theme (default: "capsule")
+language "fr"                // this computer's words: en, fr (default: the session's)
 
 behaviour {                  // only here, never in a theme
     position "bottom-right"
@@ -28,7 +29,8 @@ rule app="Spotify" { hide }
 ```
 
 The settings window edits part of this file: picking a theme writes `theme "…"`, the
-appearance switch and the Behaviour page write `behaviour`, and each app's page under
+appearance switch and the Behaviour page write `behaviour`, the Language row writes
+`language "…"`, and each app's page under
 Applications writes a `rule app="…"` block (mute, how long cards stay, breaking through Do not
 disturb). Changes keep your comments and layout, and choosing a default value removes the
 setting rather than repeating it. The look itself
@@ -79,6 +81,24 @@ modules {
 The end of each module's advanced pane in the window turns it off, and its empty section turns
 it back on; either writes this block. `osd`, `brightness` and `bluetooth-notifications` only
 decide which cards show, and are set here.
+
+## Language
+
+Hokum's own words (the window, the panel, the cards it draws itself) follow your session's
+language, and nothing else: an app's notification is shown as the app wrote it, and device and
+profile names come from PipeWire and BlueZ as they are.
+
+```kdl
+language "fr"    // en, fr; leave it out to follow the session
+```
+
+Leave it out and Hokum reads `$LANGUAGE`, `$LC_ALL`, `$LC_MESSAGES` then `$LANG`, and falls back
+to English. Only some languages are translated so far (English and French); the Language row
+under Files in the settings window does the same as this line, with **Auto** to follow the
+session. Translation is in `src/i18n.rs`: English is the key, so a new language is a new column
+there and a word in `Lang` (fixed sentences in `FR`, failures that name a device or an app in
+`FAILED`). The problems `hokum check` and the window report stay in English, like a compiler's,
+and so does `hokum --help`.
 
 ## Behaviour
 

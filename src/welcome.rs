@@ -31,10 +31,13 @@ pub fn note() -> Note {
     let mut n = Note::new(
         ID,
         "Hokum",
-        "Welcome to Hokum",
-        "This is how your notifications look now. Make them yours in Settings.",
+        crate::i18n::t("Welcome to Hokum"),
+        crate::i18n::t("This is how your notifications look now. Make them yours in Settings."),
     );
-    n.actions = vec![("open-settings".into(), "Open Settings".into())];
+    n.actions = vec![(
+        "open-settings".into(),
+        crate::i18n::t("Open Settings").into(),
+    )];
     n.has_default = true;
     n.timeout = Timeout::Never;
     n.desktop = Some("hokum".into());

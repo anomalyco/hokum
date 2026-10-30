@@ -520,7 +520,7 @@ pub mod scenes {
         let mut a = crate::sound::mock::sample();
         a.issues.push(crate::sound::model::Issue {
             severity: crate::sound::model::Severity::Warning,
-            message: "Couldn't switch to LDAC".into(),
+            message: crate::i18n::failed("Couldn't switch to {}", &["LDAC"]),
         });
         s.audio = Arc::new(a);
         decode_now(s);
@@ -528,7 +528,8 @@ pub mod scenes {
 
     pub fn lost(s: &mut Ui) {
         let mut a = crate::sound::mock::sample();
-        a.connection = crate::sound::model::Connection::Lost("PipeWire isn't running".into());
+        a.connection =
+            crate::sound::model::Connection::Lost(crate::i18n::t("PipeWire isn't running").into());
         s.audio = Arc::new(a);
         decode_now(s);
     }

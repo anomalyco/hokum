@@ -11,11 +11,14 @@ use crate::sound::model::{
     Command, Device, DeviceKind, Direction, Id, Profile, ProfileKind, State,
 };
 
-const TABS: [(Tab, &str); 3] = [
-    (Tab::Devices, "Devices"),
-    (Tab::Routing, "Routing"),
-    (Tab::Clock, "Clock"),
-];
+/// Devices, Routing and Clock, in the window's language.
+fn tabs() -> [(Tab, &'static str); 3] {
+    [
+        (Tab::Devices, crate::i18n::sound_devices()),
+        (Tab::Routing, crate::i18n::t("Routing")),
+        (Tab::Clock, crate::i18n::t("Clock")),
+    ]
+}
 
 fn select(
     s: &Ui,
@@ -92,7 +95,7 @@ fn heading(k: &Kit, key: &str, title: &str, trailing: Option<El>) -> El {
 /// A profile in a few words: Bluetooth ones by codec ("LDAC", "Headset · mSBC").
 pub fn profile_label(p: &Profile) -> String {
     match (&p.codec, p.kind) {
-        (Some(codec), ProfileKind::Duplex) => format!("Headset · {codec}"),
+        (Some(codec), ProfileKind::Duplex) => crate::i18n::headset(codec),
         (Some(codec), _) => codec.clone(),
         (None, _) => p.description.clone(),
     }
@@ -149,7 +152,7 @@ fn node_row(s: &Ui, k: &Kit, d: &Device) -> El {
         r = r.child(
             IconButton::new(&glyphs::CLOSE)
                 .variant(IconButtonVariant::GhostMuted)
-                .label("Remove")
+                .label(crate::i18n::t("Remove"))
                 .on_press(move |h: &mut Host| {
                     h.sound.send(Command::RemoveVirtualSink { device: id })
                 })
@@ -218,11 +221,16 @@ fn devices(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> Vec<El> {
     }
     let add = IconButton::new(&glyphs::PLUS)
         .variant(IconButtonVariant::GhostMuted)
-        .label("New virtual output")
+        .label(crate::i18n::t("New virtual output"))
         .on_press(|h: &mut Host| h.sound.naming = Some(TextEdit::new("")))
         .build(k)
         .key("add");
-    let mut rows = vec![heading(k, "virtual-head", "Virtual", Some(add))];
+    let mut rows = vec![heading(
+        k,
+        "virtual-head",
+        crate::i18n::t("Virtual"),
+        Some(add),
+    )];
     rows.extend(
         s.audio
             .devices
@@ -232,7 +240,7 @@ fn devices(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> Vec<El> {
     );
     if let Some(edit) = &s.naming {
         let field = TextInput::new(edit)
-            .placeholder("Name")
+            .placeholder(crate::i18n::t("Name"))
             .width(None)
             .on_edit(|h: &mut Host| h.sound.naming.get_or_insert_with(|| TextEdit::new("")))
             .on_submit(|h: &mut Host, _: &mut Tx| {
@@ -294,7 +302,7 @@ fn clock(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> Vec<El> {
     if rates.is_empty() {
         rates = vec![44100, 48000, 96000];
     }
-    let mut rate_options = vec![("Automatic".to_owned(), "auto".to_owned())];
+    let mut rate_options = vec![(crate::i18n::t("Automatic").to_owned(), "auto".to_owned())];
     rate_options.extend(rates.iter().map(|r| (khz(*r), r.to_string())));
     let forced_rate = sv.forced_rate.map(|r| r.to_string());
     let forced_quantum = sv.forced_quantum.map(|q| q.to_string());
@@ -316,10 +324,10 @@ fn clock(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> Vec<El> {
     );
     let lo = sv.min_quantum.max(16);
     let hi = sv.max_quantum.max(lo);
-    let mut quantum_options = vec![("Automatic".to_owned(), "auto".to_owned())];
+    let mut quantum_options = vec![(crate::i18n::t("Automatic").to_owned(), "auto".to_owned())];
     let mut q = lo.next_power_of_two();
     while q <= hi {
-        quantum_options.push((format!("{q} samples"), q.to_string()));
+        quantum_options.push((crate::i18n::samples(q), q.to_string()));
         q *= 2;
     }
     let quantum = select(
@@ -338,11 +346,10 @@ fn clock(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> Vec<El> {
         layer,
     );
     let latency = if sv.rate > 0 {
-        format!(
-            "{} · {} samples · {:.1} ms",
-            khz(sv.rate),
+        crate::i18n::buffer(
+            &khz(sv.rate),
             sv.quantum,
-            sv.quantum as f32 * 1000.0 / sv.rate as f32
+            sv.quantum as f32 * 1000.0 / sv.rate as f32,
         )
     } else {
         String::new()
@@ -350,16 +357,16 @@ fn clock(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> Vec<El> {
     let about = if sv.version.is_empty() {
         String::new()
     } else {
-        format!("PipeWire {}", sv.version)
+        crate::i18n::pipewire(&sv.version)
     };
     vec![
         section(
             k,
             "clock".into(),
             vec![
-                setting(k, "rate-row", "Sample rate", rate),
+                setting(k, "rate-row", crate::i18n::t("Sample rate"), rate),
                 el().key("sep").h(1.0).mx(12.0).fill(c.border_muted),
-                setting(k, "quantum-row", "Buffer size", quantum),
+                setting(k, "quantum-row", crate::i18n::t("Buffer size"), quantum),
             ],
         ),
         col()
@@ -574,8 +581,8 @@ fn routing(s: &Ui, k: &Kit) -> Vec<El> {
 }
 
 pub fn page(s: &Ui, k: &Kit, tab: Tab, layer: &mut Vec<El>) -> El {
-    let labels: Vec<&str> = TABS.iter().map(|t| t.1).collect();
-    let current = TABS.iter().position(|t| t.0 == tab);
+    let labels: Vec<&str> = tabs().iter().map(|t| t.1).collect();
+    let current = tabs().iter().position(|t| t.0 == tab);
     let head = row().key("head").w_full().gap(8.0).center_y().child(
         SegmentedControl::new(&labels, current)
             .width(None)
@@ -583,7 +590,7 @@ pub fn page(s: &Ui, k: &Kit, tab: Tab, layer: &mut Vec<El>) -> El {
                 let s = &mut h.sound;
                 tx.instant();
                 s.menu = None;
-                s.page = Page::Advanced(TABS[i].0);
+                s.page = Page::Advanced(tabs()[i].0);
             })
             .build(k)
             .key("tabs")
