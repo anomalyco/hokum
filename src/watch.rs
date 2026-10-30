@@ -20,6 +20,12 @@ pub struct Config {
 pub fn load() -> Config {
     let loaded = crate::config::load();
     crate::clock::prefer(loaded.behaviour.clock);
+    // Everything drawn from here on speaks the config's language, or the session's.
+    crate::i18n::set(
+        loaded
+            .language
+            .unwrap_or_else(crate::i18n::Lang::from_locale),
+    );
     Config {
         loaded,
         script: std::fs::read_to_string(crate::script::path()).ok(),

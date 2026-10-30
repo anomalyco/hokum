@@ -362,7 +362,7 @@ pub mod scenes {
         st.issues.push(crate::bluetooth::model::Issue {
             id: 9,
             severity: crate::bluetooth::model::Severity::Error,
-            message: "Couldn't connect to JBL Flip 6".into(),
+            message: crate::i18n::failed("Couldn't connect to {}", &["JBL Flip 6"]),
             device: None,
         });
         s.bt = Arc::new(st);

@@ -596,7 +596,7 @@ fn more(hidden: usize, k: &Kit) -> El {
     row()
         .key("more")
         .role("button")
-        .label("Clear all")
+        .label(crate::i18n::t("Clear all"))
         .h((28.0 * scale).round())
         .px(12.0 * scale)
         .gap(8.0 * scale)
@@ -610,12 +610,17 @@ fn more(hidden: usize, k: &Kit) -> El {
         .hit()
         .on_press(|s: &mut Ui| s.clear())
         .child(
-            text(format!("{hidden} more"))
+            text(crate::i18n::more_hidden(hidden))
                 .key("count")
                 .font(font)
                 .color(c.text_muted),
         )
-        .child(text("Clear all").key("clear").font(font).color(c.text_base))
+        .child(
+            text(crate::i18n::t("Clear all"))
+                .key("clear")
+                .font(font)
+                .color(c.text_base),
+        )
         .transition(Transition::opacity().combined(Transition::scale(0.9)))
 }
 

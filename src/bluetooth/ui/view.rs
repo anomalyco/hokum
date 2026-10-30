@@ -132,9 +132,9 @@ fn device_row(s: &Ui, k: &Kit, d: &Device, nearby: bool) -> El {
         c.text_base
     };
     let label = match (d.connected, d.is_paired()) {
-        (true, _) => format!("Disconnect {}", d.display_name()),
-        (false, true) => format!("Connect {}", d.display_name()),
-        _ => format!("Pair {}", d.display_name()),
+        (true, _) => crate::i18n::connect(d.display_name(), true),
+        (false, true) => crate::i18n::connect(d.display_name(), false),
+        _ => crate::i18n::pair(d.display_name()),
     };
     let press = {
         let id = id.clone();
@@ -188,7 +188,7 @@ fn device_row(s: &Ui, k: &Kit, d: &Device, nearby: bool) -> El {
         let more = el()
             .key("more")
             .role("button")
-            .label(format!("{} options", d.display_name()))
+            .label(crate::i18n::options(d.display_name()))
             .expanded(open)
             .size(28.0, ROW)
             .radius(8.0)
@@ -308,7 +308,7 @@ fn device_panel(s: &Ui, k: &Kit, d: &Device) -> Vec<El> {
     let id = d.id.clone();
     let trusted = d.trusted;
     let trust = Switch::new(trusted)
-        .label("Trusted")
+        .label(crate::i18n::t("Trusted"))
         .hide_label()
         .on_toggle(move |h: &mut Host| {
             let s = &mut h.bluetooth;
@@ -332,7 +332,7 @@ fn device_panel(s: &Ui, k: &Kit, d: &Device) -> Vec<El> {
                 .grow(1.0)
                 .center_y()
                 .child(
-                    text("Trusted")
+                    text(crate::i18n::t("Trusted"))
                         .key("label")
                         .font(k.ty.ui)
                         .color(c.text_muted)
@@ -346,7 +346,7 @@ fn device_panel(s: &Ui, k: &Kit, d: &Device) -> Vec<El> {
             k,
             "sound",
             &glyphs::SOUND,
-            "Sound settings",
+            crate::i18n::t("Sound settings"),
             c.text_muted,
             Some(&glyphs::ARROW_OUT),
             |h: &mut Host| h.show_section(crate::settings::Section::Sound),
@@ -359,7 +359,7 @@ fn device_panel(s: &Ui, k: &Kit, d: &Device) -> Vec<El> {
         k,
         "forget",
         &glyphs::TRASH,
-        "Forget",
+        crate::i18n::t("Forget"),
         c.danger.fg,
         None,
         move |h: &mut Host| {
@@ -429,7 +429,10 @@ fn pairing(s: &Ui, k: &Kit, p: &PairingRequest) -> El {
                 &format!("{passkey:06}"),
                 None,
             )));
-            body = body.child(buttons(vec![cancel("Cancel"), accept("Pair")]));
+            body = body.child(buttons(vec![
+                cancel(crate::i18n::t("Cancel")),
+                accept(crate::i18n::t("Pair")),
+            ]));
         }
         PairingKind::DisplayPasskey { passkey, entered } => {
             body = body.child(row().key("code").w_full().justify_center().child(digits(
@@ -437,7 +440,7 @@ fn pairing(s: &Ui, k: &Kit, p: &PairingRequest) -> El {
                 &format!("{passkey:06}"),
                 Some(*entered as usize),
             )));
-            body = body.child(buttons(vec![cancel("Cancel")]));
+            body = body.child(buttons(vec![cancel(crate::i18n::t("Cancel"))]));
         }
         PairingKind::DisplayPin { pin } => {
             body = body.child(
@@ -447,7 +450,7 @@ fn pairing(s: &Ui, k: &Kit, p: &PairingRequest) -> El {
                     .justify_center()
                     .child(digits(k, pin, None)),
             );
-            body = body.child(buttons(vec![cancel("Cancel")]));
+            body = body.child(buttons(vec![cancel(crate::i18n::t("Cancel"))]));
         }
         PairingKind::RequestPin | PairingKind::RequestPasskey => {
             let placeholder = if p.kind == PairingKind::RequestPin {
@@ -470,12 +473,15 @@ fn pairing(s: &Ui, k: &Kit, p: &PairingRequest) -> El {
                     .gap(8.0)
                     .center_y()
                     .child(field)
-                    .child(cancel("Cancel"))
-                    .child(accept("Pair")),
+                    .child(cancel(crate::i18n::t("Cancel")))
+                    .child(accept(crate::i18n::t("Pair"))),
             );
         }
         PairingKind::AuthorizePairing => {
-            body = body.child(buttons(vec![cancel("Deny"), accept("Allow")]));
+            body = body.child(buttons(vec![
+                cancel(crate::i18n::t("Deny")),
+                accept(crate::i18n::t("Allow")),
+            ]));
         }
         PairingKind::Authorize { service } => {
             body = body.child(
@@ -494,8 +500,8 @@ fn pairing(s: &Ui, k: &Kit, p: &PairingRequest) -> El {
                             .w(0.0)
                             .truncate(),
                     )
-                    .child(cancel("Deny"))
-                    .child(accept("Allow")),
+                    .child(cancel(crate::i18n::t("Deny")))
+                    .child(accept(crate::i18n::t("Allow"))),
             );
         }
     }
@@ -545,7 +551,7 @@ fn notices(s: &Ui, k: &Kit) -> Vec<El> {
                 .child(
                     IconButton::new(&glyphs::CLOSE)
                         .variant(IconButtonVariant::Ghost)
-                        .label("Dismiss")
+                        .label(crate::i18n::t("Dismiss"))
                         .on_press(move |h: &mut Host| {
                             h.bluetooth.send(Command::DismissIssue { id })
                         })
@@ -590,7 +596,7 @@ fn header(s: &Ui, k: &Kit) -> El {
     }
     if blocked {
         head = head.child(
-            text("Blocked")
+            text(crate::i18n::t("Blocked"))
                 .key("blocked")
                 .font(k.ty.small)
                 .color(c.text_faint),
@@ -602,7 +608,7 @@ fn header(s: &Ui, k: &Kit) -> El {
     }
     if a.is_some() {
         let switch = Switch::new(on)
-            .label("Bluetooth")
+            .label(crate::i18n::t("Bluetooth"))
             .hide_label()
             .control_size(ControlSize::Small)
             .disabled(blocked || busy)
@@ -661,7 +667,7 @@ fn nearby(s: &Ui, k: &Kit) -> El {
         .center_y()
         .child(icon(&glyphs::PLUS, 16.0).key("glyph").color(c.icon_muted))
         .child(
-            text("Add device")
+            text(crate::i18n::t("Add device"))
                 .key("title")
                 .font(k.ty.ui_medium)
                 .color(c.text_muted),
@@ -671,7 +677,7 @@ fn nearby(s: &Ui, k: &Kit) -> El {
         .child(
             IconButton::new(&glyphs::CLOSE)
                 .variant(IconButtonVariant::GhostMuted)
-                .label("Stop")
+                .label(crate::i18n::t("Stop"))
                 .on_press(|h: &mut Host| h.bluetooth.set_adding(false))
                 .build(k)
                 .key("close"),
@@ -708,14 +714,20 @@ pub fn main(s: &Ui, k: &Kit) -> El {
     }
     match &s.bt.connection {
         Connection::NotRunning => {
-            return body.child(empty(k, Some("Bluetooth isn't running".into())));
+            return body.child(empty(
+                k,
+                Some(crate::i18n::t("Bluetooth isn't running").into()),
+            ));
         }
         Connection::Lost(msg) => return body.child(empty(k, Some(msg.clone()))),
         Connection::Connecting => return body.child(empty(k, None)),
         Connection::Ready => {}
     }
     if s.bt.adapters.is_empty() {
-        return body.child(empty(k, Some("No Bluetooth adapter".into())));
+        return body.child(empty(
+            k,
+            Some(crate::i18n::t("No Bluetooth adapter").into()),
+        ));
     }
     body = body.child(header(s, k));
     if !s.powered() {
@@ -737,7 +749,7 @@ pub fn main(s: &Ui, k: &Kit) -> El {
         body = body.child(nearby(s, k));
     }
     let add = (!s.adding).then(|| {
-        Button::new("Add device")
+        Button::new(crate::i18n::t("Add device"))
             .variant(ButtonVariant::GhostMuted)
             .icon(&glyphs::PLUS)
             .on_press(|h: &mut Host| h.bluetooth.set_adding(true))

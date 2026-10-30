@@ -391,31 +391,31 @@ pub fn reason(name: &str, message: Option<&str>) -> Option<&'static str> {
     let short = name.rsplit('.').next().unwrap_or(name);
     if name.starts_with("org.freedesktop.DBus.Error.") {
         return Some(match short {
-            "NoReply" | "Timeout" | "TimedOut" => "Bluetooth didn't answer",
-            "AccessDenied" => "not allowed",
-            "ServiceUnknown" | "NameHasNoOwner" => "Bluetooth isn't running",
-            "UnknownObject" | "UnknownMethod" => "it's gone",
+            "NoReply" | "Timeout" | "TimedOut" => crate::i18n::t("Bluetooth didn't answer"),
+            "AccessDenied" => crate::i18n::t("not allowed"),
+            "ServiceUnknown" | "NameHasNoOwner" => crate::i18n::t("Bluetooth isn't running"),
+            "UnknownObject" | "UnknownMethod" => crate::i18n::t("it's gone"),
             _ => return None,
         });
     }
     Some(match short {
-        "AuthenticationFailed" => "wrong code or the device refused",
-        "AuthenticationCanceled" => "cancelled",
-        "AuthenticationRejected" => "rejected",
-        "AuthenticationTimeout" => "timed out",
-        "ConnectionAttemptFailed" => "it's off or out of range",
-        "AlreadyConnected" => "already connected",
-        "AlreadyExists" => "already paired",
-        "InProgress" => "already in progress",
-        "NotReady" => "Bluetooth isn't ready",
-        "NotPowered" => "Bluetooth is off",
-        "NotConnected" => "not connected",
-        "DoesNotExist" => "it's gone",
-        "NotSupported" => "not supported",
-        "NotAuthorized" | "NotPermitted" => "not allowed",
-        "NotAvailable" => "not available",
-        "InvalidArguments" | "InvalidArgs" => "not accepted",
-        "Blocked" | "Rfkill" => "blocked by airplane mode or a switch",
+        "AuthenticationFailed" => crate::i18n::t("wrong code or the device refused"),
+        "AuthenticationCanceled" => crate::i18n::t("cancelled"),
+        "AuthenticationRejected" => crate::i18n::t("rejected"),
+        "AuthenticationTimeout" => crate::i18n::t("timed out"),
+        "ConnectionAttemptFailed" => crate::i18n::t("it's off or out of range"),
+        "AlreadyConnected" => crate::i18n::t("already connected"),
+        "AlreadyExists" => crate::i18n::t("already paired"),
+        "InProgress" => crate::i18n::t("already in progress"),
+        "NotReady" => crate::i18n::t("Bluetooth isn't ready"),
+        "NotPowered" => crate::i18n::t("Bluetooth is off"),
+        "NotConnected" => crate::i18n::t("not connected"),
+        "DoesNotExist" => crate::i18n::t("it's gone"),
+        "NotSupported" => crate::i18n::t("not supported"),
+        "NotAuthorized" | "NotPermitted" => crate::i18n::t("not allowed"),
+        "NotAvailable" => crate::i18n::t("not available"),
+        "InvalidArguments" | "InvalidArgs" => crate::i18n::t("not accepted"),
+        "Blocked" | "Rfkill" => crate::i18n::t("blocked by airplane mode or a switch"),
         _ => return failed(message),
     })
 }
@@ -429,20 +429,20 @@ fn failed(message: &str) -> Option<&'static str> {
             || m.contains("timed out")
             || m.contains("timeout")
         {
-            "it's off or out of range"
+            crate::i18n::t("it's off or out of range")
         } else if m.contains("profile-unavailable") || m.contains("protocol not available") {
-            "no audio service is running"
+            crate::i18n::t("no audio service is running")
         } else if m.contains("abort-by-local")
             || m.contains("abort-by-remote")
             || m.contains("connection refused")
         {
-            "the device refused"
+            crate::i18n::t("the device refused")
         } else if m.contains("rfkill") || m.contains("blocked") {
-            "blocked by airplane mode or a switch"
+            crate::i18n::t("blocked by airplane mode or a switch")
         } else if m.contains("not powered") || m.contains("resource not ready") {
-            "Bluetooth is off"
+            crate::i18n::t("Bluetooth is off")
         } else if m.contains("in progress") || m.contains("busy") {
-            "already in progress"
+            crate::i18n::t("already in progress")
         } else {
             return None;
         },
@@ -453,7 +453,7 @@ fn failed(message: &str) -> Option<&'static str> {
 /// range".
 pub fn issue_text(what: &str, error_name: Option<&str>, message: Option<&str>) -> String {
     match error_name.and_then(|n| reason(n, message)) {
-        Some(r) => format!("{what}: {r}"),
+        Some(r) => crate::i18n::detail(what, r),
         None => what.to_owned(),
     }
 }
@@ -662,7 +662,7 @@ mod tests {
         );
         assert_eq!(
             reason("org.freedesktop.DBus.Error.NoReply", None),
-            Some("Bluetooth didn't answer")
+            Some(crate::i18n::t("Bluetooth didn't answer"))
         );
         assert_eq!(
             issue_text("Couldn't connect", None, None),

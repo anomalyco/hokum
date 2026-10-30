@@ -42,7 +42,7 @@ fn footer(s: &Ui, k: &Kit) -> El {
     };
     let open = IconButton::new(&crate::sound::ui::glyphs::EXPAND)
         .variant(IconButtonVariant::GhostMuted)
-        .label("Open Hokum")
+        .label(crate::i18n::t("Open Hokum"))
         .on_press(|s: &mut Ui| {
             if let Some(w) = &s.handle {
                 crate::modules::open(w, None, None);
@@ -54,7 +54,7 @@ fn footer(s: &Ui, k: &Kit) -> El {
         .build(k)
         .key("open-window");
     let switch = Switch::new(dnd)
-        .label("Do not disturb")
+        .label(crate::i18n::t("Do not disturb"))
         .hide_label()
         .control_size(ControlSize::Small)
         .on_toggle(toggle)
@@ -72,7 +72,7 @@ fn footer(s: &Ui, k: &Kit) -> El {
             row()
                 .key("dnd")
                 .role("switch")
-                .label("Do not disturb")
+                .label(crate::i18n::t("Do not disturb"))
                 .grow(1.0)
                 .h(32.0)
                 .pl(6.0)
@@ -89,7 +89,7 @@ fn footer(s: &Ui, k: &Kit) -> El {
                     c.icon_muted
                 }))
                 .child(
-                    text("Do not disturb")
+                    text(crate::i18n::t("Do not disturb"))
                         .key("label")
                         .font(k.ty.ui)
                         .color(c.text_base)

@@ -828,7 +828,10 @@ impl Mock {
                     d.pending = None;
                 }
                 let name = self.name(&id);
-                self.issue(format!("Couldn't connect to {name}"), Some(id));
+                self.issue(
+                    crate::i18n::failed("Couldn't connect to {}", &[&name]),
+                    Some(id),
+                );
             }
             Event::Disconnected(id) => {
                 if let Some(d) = self.dev(&id) {
@@ -894,7 +897,10 @@ impl Mock {
                     d.pending = None;
                 }
                 let name = self.name(&id);
-                self.issue(format!("Couldn't pair with {name}"), Some(id));
+                self.issue(
+                    crate::i18n::failed("Couldn't pair with {}", &[&name]),
+                    Some(id),
+                );
             }
             Event::Removed(id) => {
                 self.state.devices.retain(|d| d.id != id);
