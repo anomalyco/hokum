@@ -306,7 +306,7 @@ pub fn samples() -> Vec<Note> {
         "Dax",
         "hokum looks sick 👋 ship it before anyone sees the mako ones",
     );
-    a.context = Some("#abattoir".into());
+    a.context = Some("#general".into());
     a.actions = vec![
         ("reply".into(), "Reply".into()),
         ("later".into(), "Later".into()),

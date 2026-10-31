@@ -1930,9 +1930,9 @@ rule app="Spotify" { hide }
     #[test]
     fn interpolation_fills_fields_and_filters() {
         let mut n = Note::new(7, "Slack", "Dax", "hi");
-        n.context = Some("#abattoir".into());
+        n.context = Some("#general".into());
         let i = Interp::parse("{source}: {summary|upper} {{x}} {app|initial}").unwrap();
-        assert_eq!(i.render(&n), "Slack · #abattoir: DAX {x} S");
+        assert_eq!(i.render(&n), "Slack · #general: DAX {x} S");
         assert!(Interp::parse("{summary|shout}").is_err());
     }
 
