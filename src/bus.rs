@@ -551,6 +551,17 @@ impl Control {
         self.ask(move |s| s.dismiss_newest(all))
     }
 
+    /// Bring back the newest card that left (expired, dismissed, or held back by Do not
+    /// disturb), or all of them with `all`. Returns how many came back.
+    fn restore(&self, all: bool) -> zbus::fdo::Result<u32> {
+        self.ask(move |s| s.restore(all))
+    }
+
+    /// The cards `Restore` would bring back, newest first: (id, time, app, summary, body).
+    fn history(&self) -> zbus::fdo::Result<Vec<(u32, String, String, String, String)>> {
+        self.ask(|s| s.history())
+    }
+
     /// Do what clicking the newest card does: its default action (and Omarchy's
     /// `omarchy-exec-argv` command), or dismiss it without one. False when there's no card.
     fn invoke(&self, token: String) -> zbus::fdo::Result<bool> {
@@ -897,6 +908,31 @@ pub fn control(args: &[String]) -> i32 {
         {
             Ok(0) => fail(&"no notifications"),
             Ok(_) => 0,
+            Err(e) => fail(&e),
+        },
+        Some("restore") => match call("Restore", &(flag("--all") || flag("-a"),))
+            .and_then(|m| m.body().deserialize::<u32>())
+        {
+            Ok(0) => fail(&"no notifications in history"),
+            Ok(_) => 0,
+            Err(e) => fail(&e),
+        },
+        Some("history") => match call("History", &()).and_then(|m| {
+            m.body()
+                .deserialize::<Vec<(u32, String, String, String, String)>>()
+        }) {
+            Ok(cards) => {
+                let line = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+                for (_, time, app, summary, body) in cards {
+                    println!(
+                        "{time}\t{}\t{}\t{}",
+                        line(&app),
+                        line(&summary),
+                        line(&body)
+                    );
+                }
+                0
+            }
             Err(e) => fail(&e),
         },
         Some("invoke") => {

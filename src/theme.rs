@@ -623,6 +623,7 @@ pub struct Behave {
     pub sound: Option<bool>,
     pub sound_name: Option<String>,
     pub sound_critical: Option<String>,
+    pub history_length: Option<usize>,
 }
 
 impl Behave {
@@ -660,6 +661,9 @@ impl Behave {
         if let Some(v) = &self.sound_critical {
             b.sound_critical = v.clone();
         }
+        if let Some(v) = self.history_length {
+            b.history_length = v;
+        }
     }
 
     fn merge(&mut self, top: &Behave) {
@@ -674,7 +678,8 @@ impl Behave {
             pause_on_hover,
             do_not_disturb,
             check_for_updates,
-            clock
+            clock,
+            history_length
         );
         if top.sound_name.is_some() {
             self.sound_name = top.sound_name.clone();
@@ -1199,6 +1204,7 @@ impl Parser<'_> {
                 }
                 "stay" => b.stay = self.num(node, v).map(|s| s.max(0.5)),
                 "show-at-most" => b.show_at_most = self.num(node, v).map(|n| n.clamp(1.0, 20.0) as usize),
+                "history-length" => b.history_length = self.num(node, v).map(|n| n.clamp(0.0, 100.0) as usize),
                 "pause-on-hover" => b.pause_on_hover = flag(self, v),
                 "do-not-disturb" => b.do_not_disturb = flag(self, v),
                 "check-for-updates" => b.check_for_updates = flag(self, v),
@@ -1219,7 +1225,7 @@ impl Parser<'_> {
                 },
                 other => self.problem(
                     node,
-                    format!("unknown behaviour `{other}`; use position, appearance, stay, show-at-most, pause-on-hover, do-not-disturb, check-for-updates, clock, sound, sound-critical"),
+                    format!("unknown behaviour `{other}`; use position, appearance, stay, show-at-most, pause-on-hover, do-not-disturb, check-for-updates, clock, sound, sound-critical, history-length"),
                 ),
             }
         }
