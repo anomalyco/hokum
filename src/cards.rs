@@ -845,6 +845,73 @@ mod tests {
         (ui, rx)
     }
 
+    /// The ids of the cards on screen, newest first.
+    fn shown(ui: &Ui) -> Vec<u32> {
+        ui.notes.iter().map(|n| n.id).collect()
+    }
+
+    fn urgent(id: u32, app: &str, urgency: u8) -> Note {
+        let mut n = Note::new(id, app, "s", "b");
+        n.urgency = urgency;
+        n
+    }
+
+    #[test]
+    fn do_not_disturb_holds_low_and_normal_cards_and_tells_the_sender() {
+        let (mut ui, rx) = ui();
+        ui.settings.do_not_disturb = true;
+        ui.upsert(urgent(1, "App", 0));
+        ui.upsert(urgent(2, "App", 1));
+        assert_eq!(shown(&ui), Vec::<u32>::new());
+        assert_eq!(
+            rx.try_iter().collect::<Vec<_>>(),
+            [
+                Out::Closed(1, Reason::Expired),
+                Out::Closed(2, Reason::Expired)
+            ]
+        );
+    }
+
+    #[test]
+    fn critical_hud_and_interrupt_cards_break_through_do_not_disturb() {
+        let (mut ui, rx) = ui();
+        ui.settings.do_not_disturb = true;
+        ui.theme = crate::theme::parse_config("rule app=\"Pager\" { interrupt }\n").unwrap();
+        ui.upsert(urgent(1, "App", 2));
+        let mut hud = urgent(2, "Volume", 1);
+        hud.hud = true;
+        ui.upsert(hud);
+        ui.upsert(urgent(3, "Pager", 1));
+        ui.upsert(urgent(4, "Other", 1));
+        assert_eq!(shown(&ui), [3, 2, 1]);
+        assert_eq!(
+            rx.try_iter().collect::<Vec<_>>(),
+            [Out::Closed(4, Reason::Expired)]
+        );
+    }
+
+    #[test]
+    fn with_do_not_disturb_off_every_card_shows() {
+        let (mut ui, rx) = ui();
+        for (id, urgency) in [(1, 0), (2, 1), (3, 2)] {
+            ui.upsert(urgent(id, "App", urgency));
+        }
+        assert_eq!(shown(&ui), [3, 2, 1]);
+        assert_eq!(rx.try_iter().count(), 0);
+    }
+
+    #[test]
+    fn a_hide_rule_drops_even_a_critical_card() {
+        let (mut ui, rx) = ui();
+        ui.theme = crate::theme::parse_config("rule app=\"Spam\" { hide }\n").unwrap();
+        ui.upsert(urgent(1, "Spam", 2));
+        assert_eq!(shown(&ui), Vec::<u32>::new());
+        assert_eq!(
+            rx.try_iter().collect::<Vec<_>>(),
+            [Out::Closed(1, Reason::Expired)]
+        );
+    }
+
     #[test]
     fn only_cards_that_fit_show_and_the_rest_wait_behind_the_pill() {
         let notes: Vec<Note> = (1..=5).map(|i| Note::new(i, "App", "s", "b")).collect();
