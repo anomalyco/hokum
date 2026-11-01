@@ -39,6 +39,7 @@ mod entries;
 mod glyph;
 mod icons;
 mod integrations;
+mod keyboard;
 mod modules;
 mod omarchy_theme;
 mod panel;
@@ -57,7 +58,7 @@ mod welcome;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-const HELP: &str = "usage: hokum [sound | bt | service [--replace] | check [path] | dismiss | invoke | dnd | update] [--version] [--help]
+const HELP: &str = "usage: hokum [sound | bt | service [--replace] | check [path] | dismiss | invoke | dnd | keyboard-backlight | update] [--version] [--help]
   hokum                  show the window (starts Hokum if needed)
   hokum sound            show the window on Sound
   hokum bt, bluetooth    show the window on Bluetooth
@@ -73,6 +74,10 @@ const HELP: &str = "usage: hokum [sound | bt | service [--replace] | check [path
                          saved to config.kdl like the settings window's switch
     --json               print {\"dnd\":true} instead
     --watch              keep printing it whenever it changes (for bars)
+  hokum keyboard-backlight [up|down|toggle|<level>|<percent>%]
+                         print the keyboard's backlight, or set it and print the result
+                         (bind it to the XF86KbdBrightnessUp/Down and XF86KbdLightOnOff keys)
+    --probe              print what Hokum finds, and whether it can set it
   hokum update           check for a new build on this build's channel now
     --install            and install it, as clicking the update card does
   dismiss and invoke exit 1 when there are no notifications
@@ -95,6 +100,9 @@ fn main() {
         } else {
             1
         });
+    }
+    if argv.first().is_some_and(|a| a == "keyboard-backlight") {
+        std::process::exit(keyboard::cli(&argv[1..]));
     }
     if argv.first().is_some_and(|a| a == "update") {
         std::process::exit(update::cli(&argv));

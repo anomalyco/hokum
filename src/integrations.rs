@@ -1,12 +1,13 @@
 //! What the modules tell the notifications: a volume card when the default output's volume or
 //! mute changes from outside Hokum (keys, wpctl, an app), a brightness card when the screen's
-//! backlight changes, and Bluetooth cards when a paired device connects or its battery runs
+//! backlight changes, a keyboard card when the keyboard's does, and Bluetooth cards when a paired device connects or its battery runs
 //! low. Each watcher sees every snapshot and decides; the service shows what they return on the
 //! cards overlay (`crate::modules`).
 
 use std::collections::HashSet;
 use std::time::Duration;
 
+use crate::backlight::Level;
 use crate::card::{Note, Timeout};
 use crate::icons::Source;
 
@@ -14,6 +15,8 @@ use crate::icons::Source;
 pub const OSD_ID: u32 = u32::MAX / 2 + 2;
 /// The brightness card's id: every change lands in the same card.
 pub const BRIGHTNESS_ID: u32 = u32::MAX / 2 + 3;
+/// The keyboard backlight card's id.
+pub const KEYBOARD_ID: u32 = u32::MAX / 2 + 4;
 /// Bluetooth cards take ids from here, two per device.
 const DEVICE_IDS: u32 = u32::MAX / 2 + 16;
 const LOW: u8 = 20;
@@ -100,11 +103,45 @@ pub struct Brightness {
 }
 
 impl Brightness {
-    /// The card for this reading, if the level changed. The first reading only sets the
-    /// baseline, so Hokum starting doesn't flash a card.
-    pub fn see(&mut self, level: f32) -> Option<Note> {
+    /// The card for this reading, if the level changed. A `quiet` reading (the first, or the
+    /// first after the system slept) only sets the baseline, so Hokum starting or the laptop
+    /// waking doesn't flash a card.
+    pub fn see(&mut self, level: Level, quiet: bool) -> Option<Note> {
+        let level = level.fraction();
         let before = self.last.replace(level)?;
-        ((before - level).abs() >= 0.004).then(|| brightness_note(level))
+        (!quiet && (before - level).abs() >= 0.004).then(|| brightness_note(level))
+    }
+}
+
+/// The keyboard backlight card at `level`: its steps by name, or a percentage.
+pub fn keyboard_note(level: Level) -> Note {
+    let mut n = Note::new(KEYBOARD_ID, "Keyboard", crate::keyboard::text(level), "");
+    n.value = Some(level.fraction());
+    n.tag = Some("keyboard".into());
+    n.hud = true;
+    n.timeout = Timeout::After(Duration::from_millis(1600));
+    n.icon_src = [
+        // Full colour first: a symbolic icon is drawn dark, and the card doesn't recolour it.
+        "keyboard-brightness",
+        "input-keyboard",
+        "keyboard-brightness-symbolic",
+        "input-keyboard-symbolic",
+    ]
+    .into_iter()
+    .find_map(icon);
+    n
+}
+
+/// Watches the keyboard's backlight for changes, as `Brightness` does the screen's.
+#[derive(Default)]
+pub struct Keyboard {
+    last: Option<Level>,
+}
+
+impl Keyboard {
+    pub fn see(&mut self, level: Level, quiet: bool) -> Option<Note> {
+        let before = self.last.replace(level)?;
+        (!quiet && before != level).then(|| keyboard_note(level))
     }
 }
 
@@ -259,17 +296,37 @@ mod tests {
     #[test]
     fn the_brightness_card_follows_changes_only() {
         let mut b = Brightness::default();
-        assert!(b.see(0.5).is_none(), "not at startup");
-        assert!(b.see(0.5).is_none(), "nothing changed");
-        assert!(b.see(0.501).is_none(), "less than a step");
-        let n = b.see(0.55).expect("a card");
+        let l = |now| Level { now, max: 1000 };
+        assert!(b.see(l(500), true).is_none(), "not at startup");
+        assert!(b.see(l(500), false).is_none(), "nothing changed");
+        assert!(b.see(l(501), false).is_none(), "less than a step");
+        let n = b.see(l(550), false).expect("a card");
         assert_eq!(
             (n.id, n.app.as_str(), n.summary.as_str()),
             (BRIGHTNESS_ID, "Brightness", "55%")
         );
         assert!((n.value.unwrap() - 0.55).abs() < 0.001 && n.hud);
-        assert_eq!(b.see(0.0).unwrap().summary, "0%");
+        assert!(b.see(l(200), true).is_none(), "not on waking");
+        assert_eq!(b.see(l(0), false).unwrap().summary, "0%");
         assert_eq!(brightness_note(1.4).summary, "100%", "never past full");
+    }
+
+    #[test]
+    fn the_keyboard_card_names_its_steps() {
+        let mut k = Keyboard::default();
+        let l = |now| Level { now, max: 2 };
+        assert!(k.see(l(1), true).is_none(), "not at startup");
+        assert!(k.see(l(1), false).is_none(), "nothing changed");
+        let n = k.see(l(2), false).expect("a card");
+        assert_eq!(
+            (n.id, n.app.as_str(), n.summary.as_str(), n.value),
+            (KEYBOARD_ID, "Keyboard", "High", Some(1.0))
+        );
+        assert!(n.hud, "shown through Do not disturb");
+        assert!(k.see(l(0), true).is_none(), "not on waking");
+        assert_eq!(k.see(l(1), false).unwrap().summary, "Low");
+        let fine = keyboard_note(Level { now: 40, max: 100 });
+        assert_eq!(fine.summary, "40%");
     }
 
     #[test]

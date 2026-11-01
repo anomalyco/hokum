@@ -716,6 +716,12 @@ fn brightness(s: &mut Ui) {
     s.upsert(decoded(crate::integrations::brightness_note(0.55)));
 }
 
+/// The keyboard backlight card, on a keyboard with three levels.
+fn keyboard(s: &mut Ui) {
+    let level = crate::backlight::Level { now: 1, max: 2 };
+    s.upsert(decoded(crate::integrations::keyboard_note(level)));
+}
+
 /// A Bluetooth headset connecting, and a mouse running low.
 fn bt_connected(s: &mut Ui) {
     for n in crate::integrations::samples().into_iter().skip(1).rev() {
@@ -807,6 +813,7 @@ pub fn headless() {
             ("update", update),
             ("osd", osd),
             ("brightness", brightness),
+            ("keyboard", keyboard),
             ("bt-connected", bt_connected),
             ("soft", |s| bundled(s, "soft")),
             ("crisp", |s| bundled(s, "crisp")),

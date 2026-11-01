@@ -795,6 +795,11 @@ mod tests {
         assert!(m.sound && m.bluetooth && m.brightness && !m.osd && !m.bluetooth_notifications);
         let m = load_src("modules { brightness #false }\n").modules;
         assert!(!m.brightness && m.osd, "brightness is its own switch");
+        let m = load_src("modules { keyboard-backlight #false }\n").modules;
+        assert!(
+            !m.keyboard_backlight && m.brightness,
+            "and so is the keyboard's"
+        );
         let mut e = edit("theme \"soft\"\n");
         e.set_module("bluetooth", false);
         assert!(
