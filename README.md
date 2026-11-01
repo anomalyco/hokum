@@ -161,6 +161,9 @@ answering them.
   picture is just the app's icon again. Emoji draw in colour.
 - **Behaviour:** screen corner, how long cards stay, how many show, pause while hovered, and
   Do not disturb (only critical notifications and apps you allow show).
+- **French or English:** the window, the panel and Hokum's own cards follow your session's
+  language, or `language "fr"` in `config.kdl`; apps' notifications and device names are shown
+  as they come. See [docs/theming.md](docs/theming.md#language).
 - **Sounds (opt-in):** `behaviour { sound #true }` plays a sound for new cards, with its own
   for critical ones and per-app `rule`s; apps' `sound-file`, `sound-name` and `suppress-sound`
   hints count. See [docs/theming.md](docs/theming.md#sounds).

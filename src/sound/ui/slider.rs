@@ -225,7 +225,7 @@ pub fn balance(k: &Kit, target: Target, value: f32) -> El {
         .grow(1.0)
         .w(0.0)
         .role("slider")
-        .label("Balance")
+        .label(crate::i18n::t("Balance"))
         .cursor(rune::Cursor::Pointer)
         .child(centre)
         .child(track(k, parts))

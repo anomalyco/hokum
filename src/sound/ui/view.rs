@@ -159,7 +159,7 @@ fn device_section(s: &Ui, k: &Kit, kind: DeviceKind, layer: &mut Vec<El>) -> Opt
     let lead = lead_button(
         k,
         "mute",
-        "Mute",
+        crate::i18n::t("Mute"),
         t,
         icon(glyph, 16.0)
             .key("glyph")
@@ -470,7 +470,7 @@ fn app_row(s: &Ui, k: &Kit, st: &Stream) -> El {
     let more = el()
         .key("more")
         .role("button")
-        .label(format!("{} options", st.app_name))
+        .label(crate::i18n::options(&st.app_name))
         .expanded(open)
         .size(TRAIL, LEAD)
         .ml(-6.0)
@@ -584,7 +584,7 @@ fn notices(s: &Ui, k: &Kit) -> Vec<El> {
             .children(dismiss.map(|i| {
                 IconButton::new(&glyphs::CLOSE)
                     .variant(IconButtonVariant::Ghost)
-                    .label("Dismiss")
+                    .label(crate::i18n::t("Dismiss"))
                     .on_press(move |h: &mut Host| h.sound.send(Command::DismissIssue { index: i }))
                     .build(k)
                     .key("dismiss")

@@ -426,7 +426,7 @@ fn label<S: Cards>(cx: &Ctx, n: &Node, in_row: bool) -> Vec<El> {
                     // card's edge like everything else does.
                     .mr(-(size - glyph) / 2.0)
                     .role("button")
-                    .label("Dismiss")
+                    .label(crate::i18n::t("Dismiss"))
                     .size(size, size)
                     .center()
                     .radius(props.radius.unwrap_or(t.badge_radius.min(6.0)))

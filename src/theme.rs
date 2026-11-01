@@ -1580,6 +1580,10 @@ fn parse_as(src: &str, id: &str, config: bool) -> Result<Theme, Vec<Problem>> {
             "behaviour" | "behavior" => p.problem(node, "themes don't set behaviour; it belongs in config.kdl's `behaviour { }`"),
             "modules" if config => theme.modules = p.modules(node),
             "modules" => p.problem(node, "themes don't set modules; they belong in config.kdl's `modules { }`"),
+            // Read by `crate::config::language` off the document: a theme is about looks,
+            // never about words.
+            "language" if config => {}
+            "language" => p.problem(node, "themes don't set a language; it belongs at the top of config.kdl, like `language \"fr\"`"),
             "tokens" => {
                 let o = p.tokens(node);
                 match args.first().and_then(|v| v.as_string()) {
@@ -1600,7 +1604,7 @@ fn parse_as(src: &str, id: &str, config: bool) -> Result<Theme, Vec<Problem>> {
                 let r = p.rule(node);
                 theme.rules.push(r);
             }
-            other => p.problem(node, format!("unknown section `{other}`; use name, theme, behaviour, modules, tokens, template, rule")),
+            other => p.problem(node, format!("unknown section `{other}`; use name, theme, behaviour, modules, language, tokens, template, rule")),
         }
     }
     if p.problems.is_empty() {
