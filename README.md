@@ -201,6 +201,7 @@ Needs the PipeWire headers and clang for bindgen (`pipewire` and `clang` on Arch
 
 ```sh
 cargo build --release
+cargo test
 target/release/hokum service --snap cards.png --scene demo   # headless render, no D-Bus
 target/release/hokum --snap settings.png --scene hokum
 target/release/hokum --snap sound.png --scene sound          # Sound and Bluetooth on mocks
@@ -208,6 +209,8 @@ target/release/hokum --snap panel.png --scene panel --size 364x440
 ```
 
 `HOKUM_SOUND_BACKEND=mock` and `HOKUM_BLUETOOTH_BACKEND=mock` run the service on fake devices.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the rest of the path to a pull request, and
+[docs/dbus.md](docs/dbus.md) every D-Bus method, signal and hint Hokum serves.
 
 Releases are cut by `.github/workflows/release.yml`; see [docs/releasing.md](docs/releasing.md).
 
