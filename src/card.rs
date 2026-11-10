@@ -64,6 +64,9 @@ pub struct Note {
     pub left: Option<Duration>,
     /// Hokum's own feedback (the volume card): shown through Do not disturb.
     pub hud: bool,
+    /// Brought back from history (`hokum restore`): its sender was told it closed, so it hears
+    /// nothing more about it.
+    pub restored: bool,
     /// The sender's sound hints.
     pub sound: crate::chime::Hint,
 }
@@ -102,6 +105,7 @@ impl Note {
             deadline: None,
             left: None,
             hud: false,
+            restored: false,
             sound: crate::chime::Hint::None,
         }
     }

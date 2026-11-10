@@ -97,6 +97,7 @@ appearance under Appearance and the rest under Behaviour.
 | `clock` | `{time}` on cards: `12h` (`7:54 PM`), `24h` (`19:54`), or `auto` (the default), which follows Omarchy's bar clock, GNOME's clock setting, or else your locale (`en_US` and other AM/PM locales get 12-hour). A theme can force one with `{time|12h}` or `{time|24h}` |
 | `sound` | `#true`: play a sound when a new card shows (off by default). A name from the sound theme (`"message-new-instant"`, the default) or an absolute path to an `.oga`, `.ogg` or `.wav` file picks the sound and turns it on |
 | `sound-critical` | the sound for critical notifications (default `"dialog-warning"`) |
+| `history-length` | cards kept for `hokum restore` after they expire, are dismissed or are held back by Do not disturb (default 20, up to 100; 0 keeps none) |
 | `check-for-updates` | `#true`: fetch the release manifest hourly (30 minutes on dev) and show a card when a different build is out; nothing installs without a click. `#false` turns it off |
 
 ### Sounds

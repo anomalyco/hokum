@@ -57,7 +57,7 @@ mod welcome;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-const HELP: &str = "usage: hokum [sound | bt | service [--replace] | check [path] | dismiss | invoke | dnd | update] [--version] [--help]
+const HELP: &str = "usage: hokum [sound | bt | service [--replace] | check [path] | dismiss | invoke | restore | history | dnd | update] [--version] [--help]
   hokum                  show the window (starts Hokum if needed)
   hokum sound            show the window on Sound
   hokum bt, bluetooth    show the window on Bluetooth
@@ -68,6 +68,9 @@ const HELP: &str = "usage: hokum [sound | bt | service [--replace] | check [path
                          print its problems; exits non-zero if there are any
   hokum dismiss [--all]  close the newest card, or every card
   hokum invoke           do what clicking the newest card does
+  hokum restore [--all]  bring back the newest card that left (expired, dismissed or held
+                         back by Do not disturb), or all of them
+  hokum history          list what restore would bring back, newest first
   hokum dnd [on|off|toggle]
                          print Do not disturb (on or off), or set it and print the result;
                          saved to config.kdl like the settings window's switch
@@ -75,7 +78,7 @@ const HELP: &str = "usage: hokum [sound | bt | service [--replace] | check [path
     --watch              keep printing it whenever it changes (for bars)
   hokum update           check for a new build on this build's channel now
     --install            and install it, as clicking the update card does
-  dismiss and invoke exit 1 when there are no notifications
+  dismiss, invoke and restore exit 1 when there are no notifications
   --version              print the version
 Rune's tooling flags (--snap, --scene, --size, --theme, ...) render headless.";
 
@@ -99,10 +102,12 @@ fn main() {
     if argv.first().is_some_and(|a| a == "update") {
         std::process::exit(update::cli(&argv));
     }
-    if argv
-        .first()
-        .is_some_and(|a| matches!(a.as_str(), "dismiss" | "invoke" | "dnd"))
-    {
+    if argv.first().is_some_and(|a| {
+        matches!(
+            a.as_str(),
+            "dismiss" | "invoke" | "restore" | "history" | "dnd"
+        )
+    }) {
         std::process::exit(bus::control(&argv));
     }
     // The backends without the window (not in --help).
