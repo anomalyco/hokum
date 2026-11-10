@@ -127,9 +127,48 @@ modules {
 
 When the default output's volume or mute changes from outside Hokum (volume keys, `wpctl`, an
 app), one Volume card shows the level and updates in place; it shows through Do not disturb.
-A Brightness card does the same when the screen's backlight changes. When a paired Bluetooth device connects, a card says so with its battery, and one more warns once
+A Brightness card does the same when the screen's backlight changes, and a Keyboard card when
+the keyboard's does. When a paired Bluetooth device connects, a card says so with its battery, and one more warns once
 when a device's battery drops below 20 % (again only after it's been back above 30 %). Turn them
-off with `osd #false`, `brightness #false` and `bluetooth-notifications #false` in `modules`.
+off with `osd #false`, `brightness #false`, `keyboard-backlight #false` and
+`bluetooth-notifications #false` in `modules`.
+
+### Keyboard backlight
+
+The Keyboard card follows any backlit keyboard the kernel shows in `/sys/class/leds` (Dell,
+ThinkPad, ASUS, IdeaPad, Framework 13, Macs and more), however the level changed. Where the
+laptop's firmware handles the keys itself (Dell, ThinkPad, most ASUS), there's nothing to set
+up. Where the keys only send `XF86KbdBrightnessUp`/`Down` (Macs, some ASUS; `wev` shows them),
+nothing handles them on niri, sway, Hyprland or river until you bind them to Hokum, which sets
+the level through logind, without root:
+
+```kdl
+// niri
+XF86KbdBrightnessUp   allow-when-locked=true { spawn "hokum" "keyboard-backlight" "up"; }
+XF86KbdBrightnessDown allow-when-locked=true { spawn "hokum" "keyboard-backlight" "down"; }
+XF86KbdLightOnOff     allow-when-locked=true { spawn "hokum" "keyboard-backlight" "toggle"; }
+```
+
+```
+# sway
+bindsym --locked XF86KbdBrightnessUp exec hokum keyboard-backlight up
+bindsym --locked XF86KbdBrightnessDown exec hokum keyboard-backlight down
+bindsym --locked XF86KbdLightOnOff exec hokum keyboard-backlight toggle
+# Hyprland
+bindel = , XF86KbdBrightnessUp, exec, hokum keyboard-backlight up
+bindel = , XF86KbdBrightnessDown, exec, hokum keyboard-backlight down
+bindl = , XF86KbdLightOnOff, exec, hokum keyboard-backlight toggle
+# river
+riverctl map -repeat normal None XF86KbdBrightnessUp spawn 'hokum keyboard-backlight up'
+riverctl map -repeat normal None XF86KbdBrightnessDown spawn 'hokum keyboard-backlight down'
+riverctl map normal None XF86KbdLightOnOff spawn 'hokum keyboard-backlight toggle'
+```
+
+`hokum keyboard-backlight` alone prints the level; `50%` or a raw level sets it. If no card
+shows, `hokum keyboard-backlight --probe` prints what Hokum finds; please paste it into an
+issue. Most HP and Acer laptops handle the backlight in firmware without telling the kernel, and
+the Framework Laptop 16's keyboard is a USB device of its own: neither shows a light Hokum can
+follow yet.
 
 ### Bluetooth pairing
 

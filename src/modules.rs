@@ -1,7 +1,8 @@
 //! The modules beside notifications, in the service: starts and stops Sound's and Bluetooth's
 //! backends as config.kdl turns them on and off (`modules { sound #true; bluetooth #true }`),
 //! hands their snapshots to the window and the tray panel, and keeps the one tray icon. The
-//! brightness module has no section: it watches the backlight and only shows a card.
+//! brightness and keyboard-backlight modules have no section: they watch the screen's and the
+//! keyboard's backlight and only show a card.
 //!
 //! Each backend runs on its own threads. One that can't start, or that panics later, leaves a
 //! quiet line in its section (and nothing in the panel); notifications never notice.
@@ -12,6 +13,7 @@ use std::sync::{Arc, Mutex};
 
 use rune::{AppHandle, OverlayHandle, Tray, TrayEvent, TrayIcon, TrayItem, TraySpec};
 
+use crate::backlight::Level;
 use crate::settings::{Section, Ui};
 use crate::watch::Config;
 
@@ -27,9 +29,10 @@ pub struct Wiring {
     panel: OverlayHandle<Ui>,
     cards: OverlayHandle<crate::cards::Ui>,
     osd: Mutex<crate::integrations::Osd>,
-    brightness: Mutex<crate::integrations::Brightness>,
-    /// The backlight watch while `modules { brightness }` is on.
-    backlight: Mutex<Option<crate::backlight::Watch>>,
+    /// The screen's backlight watch while `modules { brightness }` is on.
+    screen_light: Mutex<Option<crate::backlight::Watch>>,
+    /// The keyboard's while `modules { keyboard-backlight }` is.
+    keyboard_light: Mutex<Option<crate::backlight::Watch>>,
     devices: Mutex<crate::integrations::Devices>,
     /// `modules { osd; bluetooth-notifications }`.
     show_osd: AtomicBool,
@@ -68,8 +71,8 @@ impl Wiring {
             panel,
             cards,
             osd: Mutex::default(),
-            brightness: Mutex::default(),
-            backlight: Mutex::new(None),
+            screen_light: Mutex::new(None),
+            keyboard_light: Mutex::new(None),
             devices: Mutex::default(),
             show_osd: AtomicBool::new(true),
             show_devices: AtomicBool::new(true),
@@ -112,7 +115,20 @@ impl Wiring {
     pub fn configure(self: &Arc<Self>, ui: &mut Ui, config: &Config) {
         let m = config.loaded.modules;
         self.show_osd.store(m.osd, Ordering::Relaxed);
-        self.sync_brightness(m.brightness);
+        self.sync_light(
+            &self.screen_light,
+            m.brightness,
+            crate::backlight::watch,
+            crate::integrations::Brightness::default(),
+            crate::integrations::Brightness::see,
+        );
+        self.sync_light(
+            &self.keyboard_light,
+            m.keyboard_backlight,
+            crate::keyboard::watch,
+            crate::integrations::Keyboard::default(),
+            crate::integrations::Keyboard::see,
+        );
         self.show_devices
             .store(m.bluetooth_notifications, Ordering::Relaxed);
         let sound_on = ui.sound.handle.is_some() || ui.sound_error.is_some();
@@ -146,25 +162,33 @@ impl Wiring {
         self.panel.update(move |p, _| p.configure(c));
     }
 
-    /// The backlight watch on or off with `modules { brightness }`. Starting it again (a
-    /// config that turned it off and on) forgets the old level, so that isn't a change.
-    fn sync_brightness(self: &Arc<Self>, on: bool) {
-        let mut slot = self.backlight.lock().unwrap_or_else(|e| e.into_inner());
+    /// A backlight watch on or off with its module. Its card comes from `see` on `watcher`
+    /// (`Brightness`, `Keyboard`), which starts afresh each time the watch does, so a config
+    /// that turned it off and on doesn't call the level then a change.
+    fn sync_light<W: Send + 'static>(
+        &self,
+        slot: &Mutex<Option<crate::backlight::Watch>>,
+        on: bool,
+        watch: fn(crate::backlight::OnChange) -> Option<crate::backlight::Watch>,
+        watcher: W,
+        see: fn(&mut W, Level, bool) -> Option<crate::card::Note>,
+    ) {
+        let mut slot = slot.lock().unwrap_or_else(|e| e.into_inner());
         if !on {
             *slot = None;
         } else if slot.is_none() {
-            *self.brightness.lock().unwrap_or_else(|e| e.into_inner()) = Default::default();
-            let me = self.clone();
-            *slot = crate::backlight::watch(move |level| {
-                let card = me
-                    .brightness
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .see(level);
+            let cards = self.cards.clone();
+            let watcher = Mutex::new(watcher);
+            *slot = watch(Box::new(move |level, quiet| {
+                let card = see(
+                    &mut watcher.lock().unwrap_or_else(|e| e.into_inner()),
+                    level,
+                    quiet,
+                );
                 if let Some(n) = card {
-                    me.cards.update(move |c, _| c.upsert(n));
+                    cards.update(move |c, _| c.upsert(n));
                 }
-            });
+            }));
         }
     }
 

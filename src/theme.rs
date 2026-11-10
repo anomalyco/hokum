@@ -688,6 +688,7 @@ impl Behave {
 /// The control center's parts beside notifications: `modules { sound #true; bluetooth #true }`,
 /// and the cards they show (`osd`: the volume card when the output changes;
 /// `brightness`: the brightness card when the screen's backlight changes;
+/// `keyboard-backlight`: the keyboard card when the keyboard's backlight changes;
 /// `bluetooth-notifications`: devices connecting and running low). All on unless the config
 /// turns them off; themes don't set them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -696,6 +697,7 @@ pub struct Modules {
     pub bluetooth: bool,
     pub osd: bool,
     pub brightness: bool,
+    pub keyboard_backlight: bool,
     pub bluetooth_notifications: bool,
 }
 
@@ -706,6 +708,7 @@ impl Default for Modules {
             bluetooth: true,
             osd: true,
             brightness: true,
+            keyboard_backlight: true,
             bluetooth_notifications: true,
         }
     }
@@ -1245,8 +1248,9 @@ impl Parser<'_> {
                 "bluetooth" => m.bluetooth = on,
                 "osd" => m.osd = on,
                 "brightness" => m.brightness = on,
+                "keyboard-backlight" => m.keyboard_backlight = on,
                 "bluetooth-notifications" => m.bluetooth_notifications = on,
-                other => self.problem(node, format!("unknown module `{other}`; use sound, bluetooth, osd, brightness, bluetooth-notifications")),
+                other => self.problem(node, format!("unknown module `{other}`; use sound, bluetooth, osd, brightness, keyboard-backlight, bluetooth-notifications")),
             }
         }
         m
