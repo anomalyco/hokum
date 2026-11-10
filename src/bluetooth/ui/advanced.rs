@@ -7,14 +7,24 @@ use rune_kit::{Kit, SegmentedControl, Select, Switch, TextInput};
 use super::{Host, Page, Tab, Ui, glyphs};
 use crate::bluetooth::model::{Adapter, AddressType, Bearer, Command, Device};
 
-const TABS: [(Tab, &str); 2] = [(Tab::Adapter, "Adapter"), (Tab::Devices, "Devices")];
-const TIMEOUTS: [(u32, &str); 5] = [
-    (60, "1 minute"),
-    (180, "3 minutes"),
-    (300, "5 minutes"),
-    (900, "15 minutes"),
-    (0, "Never"),
-];
+/// Adapter and Devices, in the window's language.
+fn tabs() -> [(Tab, &'static str); 2] {
+    [
+        (Tab::Adapter, crate::i18n::t("Adapter")),
+        (Tab::Devices, crate::i18n::t("Devices")),
+    ]
+}
+
+/// How long the adapter stays visible or pairable.
+fn timeouts() -> [(u32, &'static str); 5] {
+    [
+        (60, crate::i18n::t("1 minute")),
+        (180, crate::i18n::t("3 minutes")),
+        (300, crate::i18n::t("5 minutes")),
+        (900, crate::i18n::t("15 minutes")),
+        (0, crate::i18n::t("Never")),
+    ]
+}
 
 fn select(
     s: &Ui,
@@ -171,12 +181,12 @@ fn services(k: &Kit, key: String, list: &[crate::bluetooth::model::Service]) -> 
 }
 
 fn timeout_options(current: u32) -> Vec<(String, String)> {
-    let mut out: Vec<(String, String)> = TIMEOUTS
-        .iter()
+    let mut out: Vec<(String, String)> = timeouts()
+        .into_iter()
         .map(|(s, l)| (l.to_string(), s.to_string()))
         .collect();
-    if !TIMEOUTS.iter().any(|t| t.0 == current) {
-        out.insert(0, (format!("{current} seconds"), current.to_string()));
+    if !timeouts().iter().any(|t| t.0 == current) {
+        out.insert(0, (crate::i18n::seconds(current), current.to_string()));
     }
     out
 }
@@ -244,14 +254,14 @@ fn adapter_tab(s: &Ui, k: &Kit, layer: &mut Vec<El>) -> Vec<El> {
         return out;
     };
     out.push(settings(s, k, a, layer));
-    out.push(heading(k, "about-head", "Properties"));
+    out.push(heading(k, "about-head", crate::i18n::t("Properties")));
     out.push(section(
         k,
         "about".into(),
         vec![facts(k, "props".into(), a.properties.clone())],
     ));
     if !a.services.is_empty() {
-        out.push(heading(k, "services-head", "Services"));
+        out.push(heading(k, "services-head", crate::i18n::t("Services")));
         out.push(section(
             k,
             "services".into(),
@@ -283,7 +293,7 @@ fn settings(s: &Ui, k: &Kit, a: &Adapter, layer: &mut Vec<El>) -> El {
             row()
                 .key("alias")
                 .role("button")
-                .label("Rename")
+                .label(crate::i18n::t("Rename"))
                 .h(28.0)
                 .px(8.0)
                 .gap(8.0)
@@ -313,12 +323,18 @@ fn settings(s: &Ui, k: &Kit, a: &Adapter, layer: &mut Vec<El>) -> El {
         a.id.clone(),
     );
     let (powered, discoverable, pairable) = (a.powered, a.discoverable, a.pairable);
-    let power = switch(k, "power", "Powered", powered, move |s: &mut Ui| {
-        s.send(Command::SetPowered {
-            adapter: i1.clone(),
-            on: !powered,
-        })
-    });
+    let power = switch(
+        k,
+        "power",
+        crate::i18n::t("Powered"),
+        powered,
+        move |s: &mut Ui| {
+            s.send(Command::SetPowered {
+                adapter: i1.clone(),
+                on: !powered,
+            })
+        },
+    );
     let disc = switch(
         k,
         "discoverable",
@@ -331,12 +347,18 @@ fn settings(s: &Ui, k: &Kit, a: &Adapter, layer: &mut Vec<El>) -> El {
             })
         },
     );
-    let pair = switch(k, "pairable", "Pairable", pairable, move |s: &mut Ui| {
-        s.send(Command::SetPairable {
-            adapter: i3.clone(),
-            on: !pairable,
-        })
-    });
+    let pair = switch(
+        k,
+        "pairable",
+        crate::i18n::t("Pairable"),
+        pairable,
+        move |s: &mut Ui| {
+            s.send(Command::SetPairable {
+                adapter: i3.clone(),
+                on: !pairable,
+            })
+        },
+    );
     let dt = select(
         s,
         k,
@@ -375,15 +397,30 @@ fn settings(s: &Ui, k: &Kit, a: &Adapter, layer: &mut Vec<El>) -> El {
         k,
         "settings".into(),
         vec![
-            setting(k, "name-row", "Name", name),
+            setting(k, "name-row", crate::i18n::t("Name"), name),
             sep(k, "s0"),
-            setting(k, "power-row", "Powered", power),
+            setting(k, "power-row", crate::i18n::t("Powered"), power),
             sep(k, "s1"),
-            setting(k, "discoverable-row", "Visible to others", disc),
-            setting(k, "discoverable-timeout-row", "Visible for", dt),
+            setting(
+                k,
+                "discoverable-row",
+                crate::i18n::t("Visible to others"),
+                disc,
+            ),
+            setting(
+                k,
+                "discoverable-timeout-row",
+                crate::i18n::t("Visible for"),
+                dt,
+            ),
             sep(k, "s2"),
-            setting(k, "pairable-row", "Pairable", pair),
-            setting(k, "pairable-timeout-row", "Pairable for", pt),
+            setting(k, "pairable-row", crate::i18n::t("Pairable"), pair),
+            setting(
+                k,
+                "pairable-timeout-row",
+                crate::i18n::t("Pairable for"),
+                pt,
+            ),
         ],
     )
 }
@@ -503,19 +540,25 @@ fn device_card(s: &Ui, k: &Kit, d: &Device) -> El {
         rows.push(setting(
             k,
             "block-row",
-            "Blocked",
-            switch(k, "block", "Blocked", blocked, move |s: &mut Ui| {
-                let device = id.clone();
-                s.send(if blocked {
-                    Command::Unblock { device }
-                } else {
-                    Command::Block { device }
-                })
-            }),
+            crate::i18n::t("Blocked"),
+            switch(
+                k,
+                "block",
+                crate::i18n::t("Blocked"),
+                blocked,
+                move |s: &mut Ui| {
+                    let device = id.clone();
+                    s.send(if blocked {
+                        Command::Unblock { device }
+                    } else {
+                        Command::Block { device }
+                    })
+                },
+            ),
         ));
         if !d.services.is_empty() {
             rows.push(sep(k, "s1"));
-            rows.push(heading(k, "services-head", "Services"));
+            rows.push(heading(k, "services-head", crate::i18n::t("Services")));
             rows.push(services(k, "services".into(), &d.services));
         }
         let mut adv: Vec<(String, String)> = d
@@ -542,11 +585,11 @@ fn device_card(s: &Ui, k: &Kit, d: &Device) -> El {
         }
         if !adv.is_empty() {
             rows.push(sep(k, "s2"));
-            rows.push(heading(k, "adv-head", "Advertising"));
+            rows.push(heading(k, "adv-head", crate::i18n::t("Advertising")));
             rows.push(facts(k, "adv".into(), adv));
         }
         rows.push(sep(k, "s3"));
-        rows.push(heading(k, "props-head", "Properties"));
+        rows.push(heading(k, "props-head", crate::i18n::t("Properties")));
         rows.push(facts(k, "props".into(), d.raw.properties.clone()));
     }
     section(k, format!("dev-{}", d.address), rows)
@@ -557,8 +600,8 @@ fn devices_tab(s: &Ui, k: &Kit) -> Vec<El> {
 }
 
 pub fn page(s: &Ui, k: &Kit, tab: Tab, layer: &mut Vec<El>) -> El {
-    let labels: Vec<&str> = TABS.iter().map(|t| t.1).collect();
-    let current = TABS.iter().position(|t| t.0 == tab);
+    let labels: Vec<&str> = tabs().iter().map(|t| t.1).collect();
+    let current = tabs().iter().position(|t| t.0 == tab);
     let head = row().key("head").w_full().gap(8.0).center_y().child(
         SegmentedControl::new(&labels, current)
             .width(None)
@@ -566,7 +609,7 @@ pub fn page(s: &Ui, k: &Kit, tab: Tab, layer: &mut Vec<El>) -> El {
                 let s = &mut h.bluetooth;
                 tx.instant();
                 s.menu = None;
-                s.page = Page::Advanced(TABS[i].0);
+                s.page = Page::Advanced(tabs()[i].0);
             })
             .build(k)
             .key("tabs")

@@ -35,6 +35,8 @@ pub struct Loaded {
     pub behaviour: Behaviour,
     /// Sound and Bluetooth, on or off.
     pub modules: crate::theme::Modules,
+    /// `language "fr"`; `None` follows the session's locale.
+    pub language: Option<crate::i18n::Lang>,
     /// What's wrong with the config or its theme; Hokum keeps drawing with the last good one.
     pub problems: Vec<Problem>,
 }
@@ -88,6 +90,8 @@ fn load_src(src: &str) -> Loaded {
     problems.extend(crate::theme::missing_templates(&own.rules, &theme));
     let behaviour = own.behaviour();
     let modules = own.modules;
+    let (language, wrong) = language(src);
+    problems.extend(wrong);
     Loaded {
         base_id,
         base,
@@ -95,7 +99,45 @@ fn load_src(src: &str) -> Loaded {
         theme,
         behaviour,
         modules,
+        language,
         problems,
+    }
+}
+
+/// The top-level `language "…"`, and the complaint when it names one Hokum doesn't speak. It's
+/// read off the document rather than the theme: a theme is about looks, not about words.
+fn language(src: &str) -> (Option<crate::i18n::Lang>, Option<Problem>) {
+    let Ok(doc) = src.parse::<KdlDocument>() else {
+        return (None, None);
+    };
+    let Some(node) = doc.nodes().iter().find(|n| n.name().value() == "language") else {
+        return (None, None);
+    };
+    let line = src[..node.span().offset().min(src.len())]
+        .matches('\n')
+        .count()
+        + 1;
+    let Some(word) = node.get(0).and_then(|v| v.as_string()) else {
+        return (
+            None,
+            Some(Problem {
+                line,
+                message: "`language` takes a language, like `language \"fr\"`".into(),
+            }),
+        );
+    };
+    match crate::i18n::Lang::of(word) {
+        Some(lang) => (Some(lang), None),
+        None => (
+            None,
+            Some(Problem {
+                line,
+                message: format!(
+                    "unknown language `{word}`; use {}",
+                    crate::i18n::Lang::WORDS.join(" or ")
+                ),
+            }),
+        ),
     }
 }
 
@@ -408,26 +450,68 @@ impl Edit {
 
     /// The top-level `theme "…"`, set or added.
     pub fn set_theme(&mut self, id: &str) {
-        let v = Value::Text(id.into());
+        self.set_top("theme", Value::Text(id.into()), true);
+    }
+
+    /// The top-level `language "…"`; `None` removes it, which follows the session's locale.
+    pub fn set_language(&mut self, word: Option<&str>) {
+        match word {
+            Some(w) => self.set_top("language", Value::Text(w.into()), false),
+            None => self.remove_top("language"),
+        }
+    }
+
+    /// The top-level node `name` with `value`, added after the leading comments when missing.
+    /// `first` puts it before everything else (the theme), rather than before the first block.
+    fn set_top(&mut self, name: &str, value: Value, first: bool) {
         if let Some(node) = self
             .doc
             .nodes_mut()
             .iter_mut()
-            .find(|n| n.name().value() == "theme")
+            .find(|n| n.name().value() == name)
         {
             node.entries_mut().clear();
-            node.push(v.entry());
+            node.push(value.entry());
             return;
         }
-        let mut node = KdlNode::new("theme");
-        node.push(v.entry());
+        let mut node = KdlNode::new(name);
+        node.push(value.entry());
         node.set_format(KdlNodeFormat {
             terminator: "\n".into(),
             ..Default::default()
         });
-        // After the leading comments, before everything else.
-        let at = self.doc.nodes().iter().position(|_| true).unwrap_or(0);
+        let at = if first {
+            // After the leading comments, before everything else.
+            0
+        } else {
+            // After the theme and the leading comments, before the blocks.
+            self.doc
+                .nodes()
+                .iter()
+                .position(|n| n.name().value() != "theme")
+                .unwrap_or(self.doc.nodes().len())
+        };
         self.doc.nodes_mut().insert(at, node);
+    }
+
+    /// Removes a top-level node, and the line it was on.
+    fn remove_top(&mut self, name: &str) {
+        if let Some(i) = self
+            .doc
+            .nodes()
+            .iter()
+            .position(|n| n.name().value() == name)
+        {
+            let gone = self.doc.nodes_mut().remove(i);
+            let lead = gone.format().map(|f| f.leading.clone()).unwrap_or_default();
+            if let Some(next) = self.doc.nodes_mut().get_mut(i)
+                && let Some(f) = next.format_mut()
+                && lead.contains('\n')
+                && !f.leading.contains('\n')
+            {
+                f.leading = format!("\n{}", f.leading);
+            }
+        }
     }
 
     /// The top-level block `name` with no arguments (`tokens`, not `tokens "dark"`), added at
@@ -786,6 +870,42 @@ mod tests {
         e.set_app("Slack", "timeout", None);
         e.set_app("Slack", "interrupt", None);
         assert_eq!(e.text(), "theme \"soft\"\nrule app=\"Slack*\" { hide }\n");
+    }
+
+    #[test]
+    fn the_language_follows_the_config_then_the_session() {
+        assert_eq!(load_src(DEFAULT).language, None, "the session's by default");
+        assert_eq!(
+            load_src("theme \"soft\"\nlanguage \"fr\"\n").language,
+            Some(crate::i18n::Lang::Fr)
+        );
+        // `fr_FR.UTF-8` is a config written by hand, not by the window.
+        assert_eq!(
+            load_src("language \"fr_FR.UTF-8\"\n").language,
+            Some(crate::i18n::Lang::Fr)
+        );
+        // A word Hokum doesn't speak is a problem, and the session's language stays on.
+        let l = load_src("language \"de\"\n");
+        assert_eq!(l.language, None);
+        assert!(!l.ok());
+        assert!(l.problems[0].message.contains("`de`"), "{:?}", l.problems);
+        let l = load_src("language\n");
+        assert!(!l.ok(), "it takes a word: {:?}", l.problems);
+
+        // The window writes it after the theme, and removing it follows the session again.
+        let mut e = edit("// mine\ntheme \"signal\"\n\nbehaviour {\n    stay 10\n}\n");
+        e.set_language(Some("fr"));
+        assert_eq!(
+            e.text(),
+            "// mine\ntheme \"signal\"\nlanguage \"fr\"\n\nbehaviour {\n    stay 10\n}\n"
+        );
+        e.set_language(Some("en"));
+        assert_eq!(load_src(&e.text()).language, Some(crate::i18n::Lang::En));
+        e.set_language(None);
+        assert_eq!(
+            e.text(),
+            "// mine\ntheme \"signal\"\n\nbehaviour {\n    stay 10\n}\n"
+        );
     }
 
     #[test]

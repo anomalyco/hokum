@@ -22,6 +22,12 @@ struct Tip {
     shown: String,
 }
 
+/// What the tray's menu says, so that a change to either rebuilds it.
+type MenuKey = (bool, crate::i18n::Lang);
+/// The tray icon while a module is on, whether it's Sound's speaker, and the menu it was
+/// built with.
+type TraySlot = (Arc<Tray>, bool, MenuKey);
+
 pub struct Wiring {
     window: AppHandle<Ui>,
     panel: OverlayHandle<Ui>,
@@ -36,7 +42,8 @@ pub struct Wiring {
     show_devices: AtomicBool,
     /// Whether the panel is showing.
     shown: Arc<AtomicBool>,
-    tray: Mutex<Option<(Arc<Tray>, bool, bool)>>,
+    /// The tray icon while a module is on.
+    tray: Mutex<Option<TraySlot>>,
     tip: Arc<Mutex<Tip>>,
 }
 
@@ -277,12 +284,13 @@ impl Wiring {
             *slot = None;
             return;
         }
-        if let Some((tray, speaker, was_dnd)) = &mut *slot
+        let menu_key = (dnd, crate::i18n::lang());
+        if let Some((tray, speaker, was)) = &mut *slot
             && *speaker == m.sound
         {
-            if *was_dnd != dnd {
+            if *was != menu_key {
                 tray.set_menu(menu(dnd));
-                *was_dnd = dnd;
+                *was = menu_key;
             }
             return;
         }
@@ -310,7 +318,7 @@ impl Wiring {
             TrayEvent::Menu(id) if id == "quit" => window.quit(),
             _ => {}
         }) {
-            Ok(t) => *slot = Some((Arc::new(t), m.sound, dnd)),
+            Ok(t) => *slot = Some((Arc::new(t), m.sound, menu_key)),
             Err(e) => {
                 eprintln!("hokum: no tray icon: {e}");
                 *slot = None;
@@ -321,23 +329,23 @@ impl Wiring {
 
 fn menu(dnd: bool) -> Vec<TrayItem> {
     vec![
-        TrayItem::action("open", "Open Hokum"),
+        TrayItem::action("open", crate::i18n::t("Open Hokum")),
         TrayItem::action(
             "dnd",
             if dnd {
-                "Turn off Do not disturb"
+                crate::i18n::t("Turn off Do not disturb")
             } else {
-                "Turn on Do not disturb"
+                crate::i18n::t("Turn on Do not disturb")
             },
         ),
         TrayItem::Separator,
-        TrayItem::action("quit", "Quit"),
+        TrayItem::action("quit", crate::i18n::t("Quit")),
     ]
 }
 
 fn sound_tip(s: &crate::sound::model::State) -> String {
     match s.default_sink() {
-        Some(d) if d.mute => format!("{} muted", d.description),
+        Some(d) if d.mute => crate::i18n::muted(&d.description),
         Some(d) => format!(
             "{} {}%",
             d.description,

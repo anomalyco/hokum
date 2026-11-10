@@ -315,27 +315,27 @@ fn note(summary: impl Into<String>, body: impl Into<String>, button: Option<&str
 }
 
 fn available(o: &Offer) -> Note {
-    let title = format!("Hokum {} is available", o.version);
+    let title = crate::i18n::update_available(&o.version);
     match (install(), &o.command) {
         (Install::Direct(_), _) => note(
             title,
-            "Update now; Hokum restarts in a moment.",
-            Some("Update"),
+            crate::i18n::update_now(),
+            Some(crate::i18n::t("Update")),
         ),
         (Install::Package { .. }, Some(cmd)) => note(
             title,
-            format!("Update with your package manager: {cmd}"),
-            Some("Copy command"),
+            crate::i18n::update_with(cmd),
+            Some(crate::i18n::t("Copy command")),
         ),
         (Install::Package { package, .. }, None) => note(
             title,
-            format!("Update the {package} package with your package manager."),
-            Some("Open hokum.app"),
+            crate::i18n::update_package(package),
+            Some(crate::i18n::t("Open hokum.app")),
         ),
         _ => note(
             title,
-            "Update Hokum the way you installed it.",
-            Some("Open hokum.app"),
+            crate::i18n::update_elsewhere(),
+            Some(crate::i18n::t("Open hokum.app")),
         ),
     }
 }
@@ -439,8 +439,8 @@ pub fn click(handle: Option<OverlayHandle<Ui>>, token: Option<String>) -> bool {
             show(
                 &handle,
                 note(
-                    format!("Updating to Hokum {}…", offer.version),
-                    "Downloading and checking it.",
+                    crate::i18n::updating(&offer.version),
+                    crate::i18n::t("Downloading and checking it."),
                     None,
                 ),
                 sha.clone(),
@@ -456,9 +456,9 @@ pub fn click(handle: Option<OverlayHandle<Ui>>, token: Option<String>) -> bool {
                     show(
                         &handle,
                         note(
-                            "Hokum couldn't update",
+                            crate::i18n::t("Hokum couldn't update"),
                             format!("{e} Still running {VERSION}."),
-                            Some("Try again"),
+                            Some(crate::i18n::t("Try again")),
                         ),
                         sha,
                     );
@@ -542,19 +542,22 @@ fn replace(path: &Path, t: &Target) -> Result<(), String> {
         file.sync_all().map_err(|e| e.to_string())
     };
     if let Err(e) = download() {
-        return fail(format!("The download failed ({e})."));
+        return fail(crate::i18n::download_failed(&e));
     }
     if std::fs::metadata(&tmp).map(|m| m.len()).ok() != Some(t.size) {
-        return fail("The download was the wrong size.".into());
+        return fail(crate::i18n::t("The download was the wrong size.").into());
     }
     if sha256(&tmp).as_deref() != Some(t.sha256.to_lowercase().as_str()) {
-        return fail("The download didn't match its checksum.".into());
+        return fail(crate::i18n::t("The download didn't match its checksum.").into());
     }
     if let Err(e) = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)) {
-        return fail(format!("Couldn't make it executable: {e}."));
+        return fail(crate::i18n::not_executable(&e.to_string()));
     }
     if let Err(e) = std::fs::rename(&tmp, path) {
-        return fail(format!("Couldn't replace {}: {e}.", path.display()));
+        return fail(crate::i18n::couldnt_replace(
+            &path.display().to_string(),
+            &e.to_string(),
+        ));
     }
     Ok(())
 }
@@ -571,7 +574,11 @@ fn mark() {
 /// After an update: one card saying so, at the new build's start.
 pub fn greeting() -> Option<Note> {
     std::fs::remove_file(marker()).ok()?;
-    let mut n = note("Hokum updated", format!("Now running {VERSION}."), None);
+    let mut n = note(
+        crate::i18n::t("Hokum updated"),
+        crate::i18n::now_running(VERSION),
+        None,
+    );
     n.timeout = Timeout::Default;
     Some(n)
 }
@@ -597,12 +604,12 @@ fn restart() -> Result<(), String> {
         return if ok {
             Ok(())
         } else {
-            Err(format!("Installed, but restarting {unit} failed."))
+            Err(crate::i18n::restart_failed(&unit))
         };
     }
     use std::os::unix::process::CommandExt;
     let e = Command::new(exe()).args(std::env::args_os().skip(1)).exec();
-    Err(format!("Installed, but couldn't restart: {e}."))
+    Err(crate::i18n::no_restart(&e.to_string()))
 }
 
 /// `hokum update [--install]`.

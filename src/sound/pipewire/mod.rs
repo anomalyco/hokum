@@ -61,7 +61,7 @@ pub fn start() -> Result<model::Audio, String> {
         .spawn(move || {
             // A bug here mustn't take notifications down with it: the section says Sound stopped.
             if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(driver, rx))).is_err() {
-                stopped("Sound stopped working; restart Hokum".into());
+                stopped(crate::i18n::t("Sound stopped working; restart Hokum").into());
             }
         })
         .map_err(|e| e.to_string())?;
@@ -220,14 +220,20 @@ impl Backend {
         let core = match b.context.connect_rc(Some(props)) {
             Ok(c) => c,
             Err(e) => {
-                b.lost(format!("can't reach PipeWire: {e}"));
+                b.lost(crate::i18n::failed(
+                    "can't reach PipeWire: {}",
+                    &[&e.to_string()],
+                ));
                 return;
             }
         };
         let registry = match core.get_registry_rc() {
             Ok(r) => r,
             Err(e) => {
-                b.lost(format!("PipeWire registry: {e}"));
+                b.lost(crate::i18n::failed(
+                    "PipeWire registry: {}",
+                    &[&e.to_string()],
+                ));
                 return;
             }
         };
@@ -342,7 +348,7 @@ impl Backend {
             if !self.store.has_session_manager() {
                 self.issue(
                     Severity::Warning,
-                    "No session manager is running (WirePlumber)".into(),
+                    crate::i18n::t("No session manager is running (WirePlumber)").into(),
                 );
             }
         }
@@ -354,16 +360,19 @@ impl Backend {
     fn error(&mut self, id: u32, res: i32, message: &str) {
         if id == pw::sys::PW_ID_CORE {
             if res == -libc::EPIPE {
-                self.lost(format!("PipeWire went away: {message}"));
+                self.lost(crate::i18n::detail(
+                    crate::i18n::t("PipeWire went away"),
+                    message,
+                ));
             } else {
-                self.issue(Severity::Error, format!("PipeWire: {message}"));
+                self.issue(Severity::Error, crate::i18n::detail("PipeWire", message));
             }
             return;
         }
         // Errors for objects we didn't ask anything of (a global that vanished mid-bind) are
         // nothing to tell the user.
         if let Some(what) = self.conn.as_mut().and_then(|c| c.pending.remove(&id)) {
-            self.issue(Severity::Error, format!("{what}: {message}"));
+            self.issue(Severity::Error, crate::i18n::detail(&what, message));
         }
     }
 
@@ -781,7 +790,10 @@ impl Backend {
             return;
         }
         if !self.ready {
-            self.issue(Severity::Error, "Not connected to PipeWire".into());
+            self.issue(
+                Severity::Error,
+                crate::i18n::t("Not connected to PipeWire").into(),
+            );
             return;
         }
         if let Err(e) = self.apply(command) {
@@ -804,12 +816,15 @@ impl Backend {
             }
             Command::SetMute { target, mute } => self.write_volume(target, None, Some(mute)),
             Command::SetDefault { device } => {
-                let d = self.last.device(device).ok_or("That device is gone")?;
+                let d = self
+                    .last
+                    .device(device)
+                    .ok_or(crate::i18n::t("That device is gone"))?;
                 let key = match d.kind {
                     model::DeviceKind::Sink => "default.configured.audio.sink",
                     model::DeviceKind::Source => "default.configured.audio.source",
                     model::DeviceKind::Monitor => {
-                        return Err("A monitor can't be the default".into());
+                        return Err(crate::i18n::t("A monitor can't be the default").into());
                     }
                 };
                 let value = serde_json::json!({ "name": d.name }).to_string();
@@ -819,14 +834,14 @@ impl Backend {
                     key,
                     Some("Spa:String:JSON"),
                     Some(&value),
-                    "Couldn't change the default device",
+                    crate::i18n::t("Couldn't change the default device"),
                 )
             }
             Command::SetPort { device, port } => {
                 let (card, dev) = self
                     .store
                     .node_card(device)
-                    .ok_or("That device has no ports")?;
+                    .ok_or(crate::i18n::t("That device has no ports"))?;
                 let profile = self.store.active_profile(card).map(|p| p.index);
                 let route = self
                     .store
@@ -837,32 +852,39 @@ impl Backend {
                             && profile
                                 .is_none_or(|p| r.profiles.is_empty() || r.profiles.contains(&p))
                     })
-                    .ok_or("That port isn't available")?;
+                    .ok_or(crate::i18n::t("That port isn't available"))?;
                 let pod = params::route_pod(route.index, dev, None);
-                self.set_device_param(card, params::ROUTE, &pod, "Couldn't switch the port")
+                self.set_device_param(
+                    card,
+                    params::ROUTE,
+                    &pod,
+                    crate::i18n::t("Couldn't switch the port"),
+                )
             }
             Command::SetProfile { card, profile } => {
                 let p = self
                     .store
                     .enum_profiles(card)
                     .find(|p| p.name == profile)
-                    .ok_or("That profile isn't available")?;
+                    .ok_or(crate::i18n::t("That profile isn't available"))?;
                 let pod = params::profile_pod(p.index);
                 let what = match store::codec(&p.name, &p.description) {
-                    Some(c) => format!("Couldn't switch to {c}"),
-                    None => "Couldn't switch the profile".into(),
+                    Some(c) => crate::i18n::failed("Couldn't switch to {}", &[&c]),
+                    None => crate::i18n::t("Couldn't switch the profile").into(),
                 };
                 self.set_device_param(card, params::PROFILE, &pod, &what)
             }
             Command::MoveStream { stream, device } => {
-                self.last.stream(stream).ok_or("That app is gone")?;
+                self.last
+                    .stream(stream)
+                    .ok_or(crate::i18n::t("That app is gone"))?;
                 let serial = self
                     .store
                     .nodes
                     .get(&device)
                     .and_then(|n| n.props.get("object.serial"))
                     .cloned()
-                    .ok_or("That device is gone")?;
+                    .ok_or(crate::i18n::t("That device is gone"))?;
                 // As pipewire-pulse does: WirePlumber follows target.object (and remembers it).
                 self.set_metadata(
                     "default",
@@ -870,7 +892,7 @@ impl Backend {
                     "target.object",
                     Some("Spa:Id"),
                     Some(&serial),
-                    "Couldn't move the app",
+                    crate::i18n::t("Couldn't move the app"),
                 )?;
                 self.set_metadata(
                     "default",
@@ -878,7 +900,7 @@ impl Backend {
                     "target.node",
                     Some("Spa:Id"),
                     Some(&device.to_string()),
-                    "Couldn't move the app",
+                    crate::i18n::t("Couldn't move the app"),
                 )
             }
             Command::CreateVirtualSink { name } => {
@@ -894,9 +916,15 @@ impl Backend {
                     .collect();
                 let node_name = format!("{}{}", store::VIRTUAL_PREFIX, slug.trim_matches('-'));
                 if self.store.node_by_name(&node_name).is_some() {
-                    return Err(format!("There's already a device called {name}"));
+                    return Err(crate::i18n::failed(
+                        "There's already a device called {}",
+                        &[&name],
+                    ));
                 }
-                let conn = self.conn.as_mut().ok_or("Not connected to PipeWire")?;
+                let conn = self
+                    .conn
+                    .as_mut()
+                    .ok_or(crate::i18n::t("Not connected to PipeWire"))?;
                 let props = properties! {
                     "factory.name" => "support.null-audio-sink",
                     "node.name" => node_name.as_str(),
@@ -909,27 +937,40 @@ impl Backend {
                     "object.linger" => "true",
                     store::OURS_KEY => "true",
                 };
-                let node: pw::node::Node = conn
-                    .core
-                    .create_object("adapter", &props)
-                    .map_err(|e| format!("Couldn't create {name}: {e}"))?;
+                let node: pw::node::Node =
+                    conn.core.create_object("adapter", &props).map_err(|e| {
+                        crate::i18n::failed("Couldn't create {}: {}", &[&name, &e.to_string()])
+                    })?;
                 let proxy = node.upcast();
-                conn.pending
-                    .insert(proxy.id(), format!("Couldn't create {name}"));
+                conn.pending.insert(
+                    proxy.id(),
+                    crate::i18n::failed("Couldn't create {}", &[&name]),
+                );
                 conn.created.push(proxy);
                 Ok(())
             }
             Command::RemoveVirtualSink { device } => {
-                let d = self.last.device(device).ok_or("That device is gone")?;
+                let d = self
+                    .last
+                    .device(device)
+                    .ok_or(crate::i18n::t("That device is gone"))?;
                 if !d.is_ours {
-                    return Err("Only devices made here can be removed".into());
+                    return Err(crate::i18n::t("Only devices made here can be removed").into());
                 }
-                let conn = self.conn.as_ref().ok_or("Not connected to PipeWire")?;
+                let conn = self
+                    .conn
+                    .as_ref()
+                    .ok_or(crate::i18n::t("Not connected to PipeWire"))?;
                 conn.registry
                     .destroy_global(device)
                     .into_result()
                     .map(|_| ())
-                    .map_err(|e| format!("Couldn't remove {}: {e}", d.description))
+                    .map_err(|e| {
+                        crate::i18n::failed(
+                            "Couldn't remove {}: {}",
+                            &[&d.description, &e.to_string()],
+                        )
+                    })
             }
             Command::SetRateQuantum { rate, quantum } => {
                 let r = rate.unwrap_or(0).to_string();
@@ -940,7 +981,7 @@ impl Backend {
                     "clock.force-rate",
                     None,
                     Some(&r),
-                    "Couldn't change the sample rate",
+                    crate::i18n::t("Couldn't change the sample rate"),
                 )?;
                 self.set_metadata(
                     "settings",
@@ -948,7 +989,7 @@ impl Backend {
                     "clock.force-quantum",
                     None,
                     Some(&q),
-                    "Couldn't change the buffer size",
+                    crate::i18n::t("Couldn't change the buffer size"),
                 )
             }
             Command::Link {
@@ -963,10 +1004,13 @@ impl Backend {
                         .cloned()
                 };
                 let (out_node, in_node) = (
-                    node_of(output_port).ok_or("That port is gone")?,
-                    node_of(input_port).ok_or("That port is gone")?,
+                    node_of(output_port).ok_or(crate::i18n::t("That port is gone"))?,
+                    node_of(input_port).ok_or(crate::i18n::t("That port is gone"))?,
                 );
-                let conn = self.conn.as_mut().ok_or("Not connected to PipeWire")?;
+                let conn = self
+                    .conn
+                    .as_mut()
+                    .ok_or(crate::i18n::t("Not connected to PipeWire"))?;
                 let props = properties! {
                     "link.output.node" => out_node.as_str(),
                     "link.output.port" => output_port.to_string(),
@@ -977,20 +1021,27 @@ impl Backend {
                 let link: pw::link::Link = conn
                     .core
                     .create_object("link-factory", &props)
-                    .map_err(|e| format!("Couldn't connect those: {e}"))?;
+                    .map_err(|e| {
+                        crate::i18n::failed("Couldn't connect those: {}", &[&e.to_string()])
+                    })?;
                 let proxy = link.upcast();
                 conn.pending
-                    .insert(proxy.id(), "Couldn't connect those".into());
+                    .insert(proxy.id(), crate::i18n::t("Couldn't connect those").into());
                 conn.created.push(proxy);
                 Ok(())
             }
             Command::Unlink { link } => {
-                let conn = self.conn.as_ref().ok_or("Not connected to PipeWire")?;
+                let conn = self
+                    .conn
+                    .as_ref()
+                    .ok_or(crate::i18n::t("Not connected to PipeWire"))?;
                 conn.registry
                     .destroy_global(link)
                     .into_result()
                     .map(|_| ())
-                    .map_err(|e| format!("Couldn't disconnect those: {e}"))
+                    .map_err(|e| {
+                        crate::i18n::failed("Couldn't disconnect those: {}", &[&e.to_string()])
+                    })
             }
             Command::SetMetering { .. } | Command::DismissIssue { .. } => Ok(()),
         }
@@ -1002,12 +1053,12 @@ impl Backend {
                 .last
                 .device(d)
                 .map(|d| d.volume.clone())
-                .ok_or_else(|| "That device is gone".into()),
+                .ok_or_else(|| crate::i18n::t("That device is gone").into()),
             Target::Stream(s) => self
                 .last
                 .stream(s)
                 .map(|s| s.volume.clone())
-                .ok_or_else(|| "That app is gone".into()),
+                .ok_or_else(|| crate::i18n::t("That app is gone").into()),
         }
     }
 
@@ -1023,17 +1074,17 @@ impl Backend {
             Target::Device(d) => (
                 d,
                 if volume.is_some() {
-                    "Couldn't change the volume"
+                    crate::i18n::t("Couldn't change the volume")
                 } else {
-                    "Couldn't mute"
+                    crate::i18n::t("Couldn't mute")
                 },
             ),
             Target::Stream(s) => (
                 s,
                 if volume.is_some() {
-                    "Couldn't change the app's volume"
+                    crate::i18n::t("Couldn't change the app's volume")
                 } else {
-                    "Couldn't mute the app"
+                    crate::i18n::t("Couldn't mute the app")
                 },
             ),
         };
@@ -1056,11 +1107,18 @@ impl Backend {
             return self.set_device_param(card, params::ROUTE, &pod, what);
         }
         let pod = params::props_pod(linear.as_deref(), mute);
-        let conn = self.conn.as_mut().ok_or("Not connected to PipeWire")?;
+        let conn = self
+            .conn
+            .as_mut()
+            .ok_or(crate::i18n::t("Not connected to PipeWire"))?;
         let Some(Bound::Node(_, n)) = conn.objects.get(&node) else {
-            return Err("That device is gone".into());
+            return Err(crate::i18n::t("That device is gone").into());
         };
-        n.set_param(ParamType::Props, 0, Pod::from_bytes(&pod).ok_or("bad pod")?);
+        n.set_param(
+            ParamType::Props,
+            0,
+            Pod::from_bytes(&pod).ok_or(crate::i18n::t("bad pod"))?,
+        );
         conn.pending.insert(n.upcast_ref().id(), what.into());
         Ok(())
     }
@@ -1072,14 +1130,17 @@ impl Backend {
         pod: &[u8],
         what: &str,
     ) -> Result<(), String> {
-        let conn = self.conn.as_mut().ok_or("Not connected to PipeWire")?;
+        let conn = self
+            .conn
+            .as_mut()
+            .ok_or(crate::i18n::t("Not connected to PipeWire"))?;
         let Some(Bound::Device(_, d)) = conn.objects.get(&card) else {
-            return Err("That card is gone".into());
+            return Err(crate::i18n::t("That card is gone").into());
         };
         d.set_param(
             ParamType::from_raw(id),
             0,
-            Pod::from_bytes(pod).ok_or("bad pod")?,
+            Pod::from_bytes(pod).ok_or(crate::i18n::t("bad pod"))?,
         );
         conn.pending.insert(d.upcast_ref().id(), what.into());
         Ok(())
@@ -1094,13 +1155,15 @@ impl Backend {
         value: Option<&str>,
         what: &str,
     ) -> Result<(), String> {
-        let (id, _) = self
-            .store
-            .metadata_named(name)
-            .ok_or("No session manager is running (WirePlumber)")?;
-        let conn = self.conn.as_mut().ok_or("Not connected to PipeWire")?;
+        let (id, _) = self.store.metadata_named(name).ok_or(crate::i18n::t(
+            "No session manager is running (WirePlumber)",
+        ))?;
+        let conn = self
+            .conn
+            .as_mut()
+            .ok_or(crate::i18n::t("Not connected to PipeWire"))?;
         let Some(Bound::Metadata(_, m)) = conn.objects.get(&id) else {
-            return Err("No session manager is running (WirePlumber)".into());
+            return Err(crate::i18n::t("No session manager is running (WirePlumber)").into());
         };
         m.set_property(subject, key, type_, value);
         conn.pending.insert(m.upcast_ref().id(), what.into());

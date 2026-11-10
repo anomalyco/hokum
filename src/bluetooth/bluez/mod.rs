@@ -100,7 +100,9 @@ fn spawn(role: Role) -> Result<(Bluetooth, JoinHandle<()>), String> {
             .is_err()
             {
                 stopped.publish(State {
-                    connection: Connection::Lost("Bluetooth stopped working; restart Hokum".into()),
+                    connection: Connection::Lost(
+                        crate::i18n::t("Bluetooth stopped working; restart Hokum").into(),
+                    ),
                     ..State::default()
                 });
             }
@@ -281,7 +283,7 @@ impl Backend {
                 self.cancelled.insert(live.request.device.clone());
                 let name = self.name(&live.request.device);
                 self.issue(
-                    format!("Pairing with {name} timed out"),
+                    crate::i18n::failed("Pairing with {} timed out", &[&name]),
                     Some(live.request.device),
                 );
             }
@@ -337,8 +339,10 @@ impl Backend {
     }
 
     fn name(&self, id: &DeviceId) -> String {
-        map::device(&id.0, &self.objects)
-            .map_or_else(|| "the device".into(), |d| d.display_name().to_owned())
+        map::device(&id.0, &self.objects).map_or_else(
+            || crate::i18n::t("the device").to_owned(),
+            |d| d.display_name().to_owned(),
+        )
     }
 
     fn adapter_name(&self, id: &model::AdapterId) -> String {
@@ -797,48 +801,49 @@ impl Backend {
             _ => {}
         }
         if self.bus.is_none() || self.owner.is_none() {
-            return self.issue("Bluetooth isn't running".into(), None);
+            return self.issue(crate::i18n::t("Bluetooth isn't running").into(), None);
         }
         match c {
             Command::SetPowered { adapter, on } => {
                 let what = if on {
-                    "Couldn't turn Bluetooth on"
+                    crate::i18n::failed("Couldn't turn Bluetooth on", &[])
                 } else {
-                    "Couldn't turn Bluetooth off"
+                    crate::i18n::failed("Couldn't turn Bluetooth off", &[])
                 };
-                self.set_adapter(adapter, "Powered", Value::Bool(on), what.into());
+                self.set_adapter(adapter, "Powered", Value::Bool(on), what);
             }
             Command::SetDiscoverable { adapter, on } => {
-                let what = format!(
-                    "Couldn't make {} {}",
-                    self.adapter_name(&adapter),
-                    if on { "visible" } else { "hidden" }
-                );
+                let name = self.adapter_name(&adapter);
+                let what = if on {
+                    crate::i18n::failed("Couldn't make {} visible", &[&name])
+                } else {
+                    crate::i18n::failed("Couldn't make {} hidden", &[&name])
+                };
                 self.set_adapter(adapter, "Discoverable", Value::Bool(on), what);
             }
             Command::SetDiscoverableTimeout { adapter, seconds } => self.set_adapter(
                 adapter,
                 "DiscoverableTimeout",
                 Value::U32(seconds),
-                "Couldn't change the timeout".into(),
+                crate::i18n::failed("Couldn't change the timeout", &[]),
             ),
             Command::SetPairable { adapter, on } => self.set_adapter(
                 adapter,
                 "Pairable",
                 Value::Bool(on),
-                "Couldn't change pairable".into(),
+                crate::i18n::failed("Couldn't change pairable", &[]),
             ),
             Command::SetPairableTimeout { adapter, seconds } => self.set_adapter(
                 adapter,
                 "PairableTimeout",
                 Value::U32(seconds),
-                "Couldn't change the timeout".into(),
+                crate::i18n::failed("Couldn't change the timeout", &[]),
             ),
             Command::SetAdapterAlias { adapter, alias } => self.set_adapter(
                 adapter,
                 "Alias",
                 Value::from(alias),
-                "Couldn't rename the adapter".into(),
+                crate::i18n::failed("Couldn't rename the adapter", &[]),
             ),
             Command::StartDiscovery { adapter } => {
                 if !self.discovering.insert(adapter.clone()) {
@@ -847,7 +852,7 @@ impl Backend {
                 self.spawn(
                     None,
                     None,
-                    "Couldn't scan for devices".into(),
+                    crate::i18n::failed("Couldn't scan for devices", &[]),
                     move |bus, _| {
                         let filter: HashMap<&str, Value> =
                             HashMap::from([("Transport", Value::from("auto"))]);
@@ -872,11 +877,13 @@ impl Backend {
                 }
             }
             Command::Connect { device } => {
-                let what = format!("Couldn't connect to {}", self.name(&device));
+                let name = self.name(&device);
+                let what = crate::i18n::failed("Couldn't connect to {}", &[&name]);
                 self.device_call(device, Pending::Connecting, "Connect", None, what);
             }
             Command::Disconnect { device } => {
-                let what = format!("Couldn't disconnect {}", self.name(&device));
+                let name = self.name(&device);
+                let what = crate::i18n::failed("Couldn't disconnect {}", &[&name]);
                 self.device_call(device, Pending::Disconnecting, "Disconnect", None, what);
             }
             Command::Pair { device } => {
@@ -889,7 +896,7 @@ impl Backend {
                 self.spawn(
                     Some(device),
                     Some(Pending::Pairing),
-                    format!("Couldn't pair with {name}"),
+                    crate::i18n::failed("Couldn't pair with {}", &[&name]),
                     move |bus, tx| {
                         match call(bus, &path, DEVICE, "Pair", &()) {
                             Err(e) if !is_error(&e, "AlreadyExists") => return Err(e.into()),
@@ -901,7 +908,7 @@ impl Backend {
                         let _ = tx.send(Event::Progress(id, Pending::Connecting));
                         match call(bus, &path, DEVICE, "Connect", &()) {
                             Err(e) => Err(Fail {
-                                what: Some(format!("Couldn't connect to {name}")),
+                                what: Some(crate::i18n::failed("Couldn't connect to {}", &[&name])),
                                 error: Box::new(e),
                             }),
                             Ok(_) => Ok(()),
@@ -926,30 +933,35 @@ impl Backend {
                 });
             }
             Command::Trust { device } => {
-                let what = format!("Couldn't trust {}", self.name(&device));
+                let name = self.name(&device);
+                let what = crate::i18n::failed("Couldn't trust {}", &[&name]);
                 self.set_device(device, "Trusted", Value::Bool(true), what);
             }
             Command::Untrust { device } => {
-                let what = format!("Couldn't stop trusting {}", self.name(&device));
+                let name = self.name(&device);
+                let what = crate::i18n::failed("Couldn't stop trusting {}", &[&name]);
                 self.set_device(device, "Trusted", Value::Bool(false), what);
             }
             Command::Block { device } => {
-                let what = format!("Couldn't block {}", self.name(&device));
+                let name = self.name(&device);
+                let what = crate::i18n::failed("Couldn't block {}", &[&name]);
                 self.set_device(device, "Blocked", Value::Bool(true), what);
             }
             Command::Unblock { device } => {
-                let what = format!("Couldn't unblock {}", self.name(&device));
+                let name = self.name(&device);
+                let what = crate::i18n::failed("Couldn't unblock {}", &[&name]);
                 self.set_device(device, "Blocked", Value::Bool(false), what);
             }
             Command::SetAlias { device, alias } => {
-                let what = format!("Couldn't rename {}", self.name(&device));
+                let name = self.name(&device);
+                let what = crate::i18n::failed("Couldn't rename {}", &[&name]);
                 self.set_device(device, "Alias", Value::from(alias), what);
             }
             Command::Remove { device } => {
                 let Some(d) = map::device(&device.0, &self.objects) else {
                     return;
                 };
-                let what = format!("Couldn't forget {}", d.display_name());
+                let what = crate::i18n::failed("Couldn't forget {}", &[d.display_name()]);
                 let (adapter, path) = (d.adapter.0, device.0.clone());
                 self.spawn(
                     Some(device),
@@ -964,18 +976,18 @@ impl Backend {
                 );
             }
             Command::ConnectProfile { device, uuid } => {
-                let what = format!(
+                let name = self.name(&device);
+                let what = crate::i18n::failed(
                     "Couldn't connect {} on {}",
-                    Service::new(&uuid).name,
-                    self.name(&device)
+                    &[&Service::new(&uuid).name, &name],
                 );
                 self.device_call(device, Pending::Profile, "ConnectProfile", Some(uuid), what);
             }
             Command::DisconnectProfile { device, uuid } => {
-                let what = format!(
+                let name = self.name(&device);
+                let what = crate::i18n::failed(
                     "Couldn't disconnect {} on {}",
-                    Service::new(&uuid).name,
-                    self.name(&device)
+                    &[&Service::new(&uuid).name, &name],
                 );
                 self.device_call(
                     device,

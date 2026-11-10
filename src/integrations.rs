@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use crate::card::{Note, Timeout};
+use crate::i18n;
 use crate::icons::Source;
 
 /// The volume card's id: every change lands in the same card.
@@ -25,7 +26,12 @@ fn icon(name: &str) -> Option<Source> {
 
 /// The volume card for `device` at `volume` (cubic, up to 1.5).
 pub fn osd_note(device: &str, volume: f32, mute: bool) -> Note {
-    let mut n = Note::new(OSD_ID, "Volume", device, if mute { "Muted" } else { "" });
+    let mut n = Note::new(
+        OSD_ID,
+        i18n::t("Volume"),
+        device,
+        if mute { i18n::t("Muted") } else { "" },
+    );
     n.value = Some(if mute { 0.0 } else { volume.clamp(0.0, 1.0) });
     n.tag = Some("volume".into());
     n.hud = true;
@@ -74,7 +80,7 @@ pub fn brightness_note(level: f32) -> Note {
     let level = level.clamp(0.0, 1.0);
     let mut n = Note::new(
         BRIGHTNESS_ID,
-        "Brightness",
+        i18n::t("Brightness"),
         format!("{}%", (level * 100.0).round()),
         "",
     );
@@ -123,11 +129,8 @@ fn device_icon(d: &crate::bluetooth::model::Device) -> Option<Source> {
 }
 
 pub fn connected_note(d: &crate::bluetooth::model::Device) -> Note {
-    let summary = match d.battery {
-        Some(b) => format!("{} connected · {b}%", d.display_name()),
-        None => format!("{} connected", d.display_name()),
-    };
-    let mut n = Note::new(device_slot(&d.id), "Bluetooth", summary, "");
+    let summary = i18n::connected(d.display_name(), d.battery);
+    let mut n = Note::new(device_slot(&d.id), i18n::t("Bluetooth"), summary, "");
     n.timeout = Timeout::After(Duration::from_secs(4));
     n.icon_src = device_icon(d);
     n
@@ -136,9 +139,9 @@ pub fn connected_note(d: &crate::bluetooth::model::Device) -> Note {
 pub fn low_battery_note(d: &crate::bluetooth::model::Device, level: u8) -> Note {
     let mut n = Note::new(
         device_slot(&d.id) + 1,
-        "Bluetooth",
-        format!("{} battery low", d.display_name()),
-        format!("{level}% left"),
+        i18n::t("Bluetooth"),
+        i18n::battery_low(d.display_name()),
+        i18n::left(level),
     );
     n.value = Some(level as f32 / 100.0);
     n.icon_src = device_icon(d);
@@ -229,7 +232,7 @@ mod tests {
             },
         );
         let n = osd.see(&s, false).expect("a card");
-        assert_eq!((n.id, n.app.as_str()), (OSD_ID, "Volume"));
+        assert_eq!((n.id, n.app.as_str()), (OSD_ID, crate::i18n::t("Volume")));
         assert!((n.value.unwrap() - 0.3).abs() < 0.01);
         assert!(osd.see(&s, false).is_none(), "nothing changed");
         change(
@@ -239,7 +242,7 @@ mod tests {
                 mute: true,
             },
         );
-        assert_eq!(osd.see(&s, false).unwrap().body, "Muted");
+        assert_eq!(osd.see(&s, false).unwrap().body, crate::i18n::t("Muted"));
         change(
             &mut s,
             Command::SetVolume {
@@ -265,7 +268,7 @@ mod tests {
         let n = b.see(0.55).expect("a card");
         assert_eq!(
             (n.id, n.app.as_str(), n.summary.as_str()),
-            (BRIGHTNESS_ID, "Brightness", "55%")
+            (BRIGHTNESS_ID, crate::i18n::t("Brightness"), "55%")
         );
         assert!((n.value.unwrap() - 0.55).abs() < 0.001 && n.hud);
         assert_eq!(b.see(0.0).unwrap().summary, "0%");
@@ -286,13 +289,12 @@ mod tests {
         s.devices[i].battery = Some(82);
         let notes = w.see(&s);
         assert_eq!(notes.len(), 1);
-        assert!(
-            notes[0].summary.ends_with("connected · 82%"),
-            "{}",
-            notes[0].summary
+        assert_eq!(
+            notes[0].summary,
+            crate::i18n::connected(s.devices[i].display_name(), Some(82)),
         );
         s.devices[i].battery = Some(15);
-        assert_eq!(w.see(&s)[0].body, "15% left");
+        assert_eq!(w.see(&s)[0].body, crate::i18n::left(15));
         s.devices[i].battery = Some(12);
         assert!(w.see(&s).is_empty(), "once per discharge");
         s.devices[i].battery = Some(40);
