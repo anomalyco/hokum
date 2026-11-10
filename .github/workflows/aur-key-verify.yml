@@ -43,5 +43,5 @@ jobs:
             aur@aur.archlinux.org list-repos)
           rm -f "$key"
           printf '%s\n' "$repos"
-          grep -qx 'hokum-bin' <<< "$repos"
+          grep -qxE '[[:space:]]*hokum-bin' <<< "$repos"
           echo "hokum-bin is listed for the key's AUR account."
