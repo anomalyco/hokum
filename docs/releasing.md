@@ -222,7 +222,7 @@ scripts/release-aur.sh test "$dist/aur"
 | Name | Use |
 | --- | --- |
 | (none) | publishing to the release service: the job's GitHub OIDC token |
-| `AUR_SSH_PRIVATE_KEY` | pushes `hokum-bin` (key `github-actions-hokum-aur` on Dax's AUR account); check it with **Hokum AUR key check** |
+| AWS `shared/AUR_SSH_KEY` (OIDC role `github/hokum-release`) | pushes `hokum-bin` (key `github-actions-hokum-aur` on Dax's AUR account); check it with **Hokum AUR key check** |
 | `GITHUB_TOKEN` (built in) | tags and creates the GitHub release (`contents: write` in the `github` job only) |
 
 Repository settings, as on Hex: default branch `dev`; rulesets "no main"

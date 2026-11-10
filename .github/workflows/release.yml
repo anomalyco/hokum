@@ -359,15 +359,30 @@ jobs:
     if: ${{ !cancelled() && needs.aur-stage.result == 'success' }}
     runs-on: ubuntu-24.04
     environment: release
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - *checkout-release
       - uses: ./.github/release/download
         with:
           pattern: build-aur
           digests: build-aur=${{ needs.aur-stage.outputs.digest }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::604439173067:role/github/hokum-release
+          role-session-name: hokum-${{ github.run_id }}
+          aws-region: us-east-1
+      - name: Fetch the AUR key
+        uses: aws-actions/aws-secretsmanager-get-secrets@2297f9a879480a9e3af9b293ed15c70caf8e1c88 # v3.0.2
+        with:
+          secret-ids: |
+            AUR_SSH_PRIVATE_KEY,shared/AUR_SSH_KEY
+          parse-json-secrets: false
       - name: Push to the AUR
         env:
-          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          AUR_SSH_PRIVATE_KEY: ${{ env.AUR_SSH_PRIVATE_KEY }}
         run: bash .github/release/push-aur.sh "$RUNNER_TEMP/in/build-aur"
 
   # Tells AUR installs about the version only once the AUR serves it.
